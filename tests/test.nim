@@ -1,5 +1,5 @@
 import vverilog/lexer
 
 
-for t in extractVTokens readFile "./samples/ex1.v":
+for t in extractVTokens readFile "./samples/top.v":
   echo t

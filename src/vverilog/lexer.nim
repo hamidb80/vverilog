@@ -1,4 +1,4 @@
-import std/[strutils]
+import std/[strutils, strformat]
 import ./conventions
 
 type
@@ -8,7 +8,7 @@ type
     vtkNumber    # 12 4.6 3b'101
 
     vtkScope     # () [] {}
-    vtkSeparator # . , : ;
+    vtkSeparator # . , ;
 
     vtkOperator  # + - && ~^ !== ?:
     vtkComment   # //  /* */
@@ -49,6 +49,8 @@ const
   VerilogIdentStartChars = IdentStartChars + {'$'}
   EoC = '\0' # end of content
   Stoppers = Whitespace + {EoC}
+  Operators = {'+', '-', '*', '/', '#', '@', '~', '?', '^', '|', '&', '%',
+      '<', '!', '=', '>'}
 
 
 iterator extractVTokens*(content: string): VToken =
@@ -93,23 +95,6 @@ iterator extractVTokens*(content: string): VToken =
         push VToken(kind: vtkSeparator, sign: cc)
         inc i
 
-      of '/':
-        case fc:
-        of '/':
-          lxState = lsInlineComment
-          inc i, 2
-          start = i
-
-        of '*':
-          lxState = lsMultiLineComment
-          inc i, 2
-          start = i
-
-        else:
-          lxState = lsOperator
-          start = i
-          inc i
-
       of '(', ')', '[', ']', '{', '}':
         push VToken(kind: vtkScope, scope: cc)
         inc i
@@ -117,10 +102,31 @@ iterator extractVTokens*(content: string): VToken =
       of Stoppers:
         inc i
 
+      of Operators:
+        if cc == '/':
+          case fc:
+          of '/':
+            lxState = lsInlineComment
+            inc i, 2
+            start = i
+
+          of '*':
+            lxState = lsMultiLineComment
+            inc i, 2
+            start = i
+
+          else:
+            lxState = lsOperator
+            start = i
+            inc i
+
+        else:
+          lxState = lsOperator
+          start = i
+          inc i
+
       else:
-        lxState = lsOperator
-        start = i
-        inc i
+        err fmt"invalid character at index {i}: '{cc}'"
 
     of lsKeyword:
       case cc:
@@ -131,7 +137,7 @@ iterator extractVTokens*(content: string): VToken =
 
     of lsNumber:
       case cc:
-      of '.', '_', '\'', 'b', 'h', Digits, 'A' .. 'F', 'x', 'Z':
+      of '.', '_', '\'', 'b', 'h', Digits, 'A' .. 'F', 'X', 'x', 'Z', 'z':
         inc i
       else:
         push VToken(kind: vtkNumber, digits: content[start ..< i])
@@ -143,7 +149,7 @@ iterator extractVTokens*(content: string): VToken =
       inc i
 
     of lsOperator:
-      if cc in "/&!:?~+-%<=>^|":
+      if cc in Operators:
         inc i
       else:
         push VToken(kind: vtkOperator, operator: content[start ..< i])
