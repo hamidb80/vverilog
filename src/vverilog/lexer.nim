@@ -8,7 +8,7 @@ type
     vtkNumber    # 12 4.6 3b'101
 
     vtkScope     # () [] {}
-    vtkSeparator # . , ;
+    vtkSeparator # , : ;
 
     vtkOperator  # + - && ~^ !== ?:
     vtkComment   # //  /* */
@@ -50,7 +50,7 @@ const
   EoC = '\0' # end of content
   Stoppers = Whitespace + {EoC}
   Operators = {'+', '-', '*', '/', '#', '@', '~', '?', '^', '|', '&', '%',
-      '<', '!', '=', '>'}
+      '<', '!', '=', '>', '.'}
 
 
 iterator extractVTokens*(content: string): VToken =
@@ -91,7 +91,7 @@ iterator extractVTokens*(content: string): VToken =
         inc i
         start = i
 
-      of '.', ',', ':', ';':
+      of ',', ':', ';':
         push VToken(kind: vtkSeparator, sign: cc)
         inc i
 

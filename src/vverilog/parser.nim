@@ -5,25 +5,31 @@ type
   VerilogDeclareKinds* = enum
     vdkInput
     vdkOutput
+    vdkInOut
     vdkReg
     vdkWire
 
   VerilogNodeKinds* = enum
     vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString
-    vnkKeyword, vnkSymbol
-    
+
+    vnkSymbol, vnkScope, vnkInstantiate
     vnkDeclare, vnkDefine, vnkAsgn
 
     vnkModule
     vnkCase, vnkOf
     vnkElif
     vnkInfix, vnkPrefix
-    
+
     vnkPar, vnkCurlyGroup
     vnkBraketRange
     vnkBracketExpr
-    
-    
+
+
+  ScopeKinds* = enum
+    skAlways
+    skForever
+    skInitial
+
   VerilogNode = ref object
     body: seq[VerilogNode]
 
@@ -33,25 +39,25 @@ type
 
     of vnkString:
       str: string
-    
-    of vnkKeyword:
-      keyword: string
 
     of vnkSymbol:
       symbol: string
 
-    of vnkDeclare:
+    of vnkScope:
+      scope: ScopeKinds
+
+    of vnkDeclare, vnkDefine:
       ident, bitRange, value: VerilogNode
-      
-    of vnkDefine:
-      alias, replacement: VerilogNode
-    
+
     of vnkAsgn:
       container, newValue: VerilogNode
-    
+
     of vnkModule:
       name: VerilogNode
       params: seq[VerilogNode]
+
+    of vnkInstantiate:
+      module, instance: VerilogNode
 
     of vnkCase:
       select: VerilogNode
@@ -61,11 +67,11 @@ type
 
     of vnkElif:
       condition: Option[VerilogNode]
-      
+
     of vnkInfix, vnkPrefix:
       operator: VerilogNode
 
-    of  vnkPar, vnkCurlyGroup:
+    of vnkPar, vnkCurlyGroup:
       discard
 
     of vnkBraketRange:
@@ -74,9 +80,14 @@ type
     of vnkBracketExpr:
       lookup: VerilogNode
       expr: VerilogNode
-    
+
 
 const VNodeLiteralKinds = {vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString}
 
 func parseVerilog*(content: string): seq[VerilogNode] =
   let tokens = toseq extractVTokens content
+
+  var i = 0
+
+  while true:
+    break
