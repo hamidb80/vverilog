@@ -1,4 +1,4 @@
-import std/[sequtils, options]
+import std/[sequtils, options, strutils, strformat]
 import ./lexer, ./conventions
 
 type
@@ -9,22 +9,31 @@ type
     vdkReg
     vdkWire
 
-  VerilogNodeKinds* = enum
-    vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString
-    vnkRange # 3:1
-    vnkSymbol, vnkScope, vnkInstantiate
-    vnkDeclare, vnkDefine, vnkAsgn
+  VerilogGroupKinds* = enum
+    vskBeginEnd
+    vskPar
+    vskBracket
+    vsk
 
-    vnkModule
+  VerilogNumberBases* = enum
+    vnbBase10
+    vnbBinary
+    vnbHex
+
+  VerilogNodeKinds* = enum
+    vnkNumber, vnkString, vnkRange
+    vnkSymbol, vnkGroup
+
+    vnkDeclare, vnkDefine, vnkAsgn, vnkInstantiate
+
+    vnkModule, vnkScope
     vnkCase, vnkOf
     vnkElif
-    vnkInfix, vnkPrefix
 
-    vnkPar, vnkCurlyGroup
+    vnkInfix, vnkPrefix
     vnkBracketExpr
 
     vnkComment
-
 
   ScopeKinds* = enum
     skAlways
@@ -35,17 +44,18 @@ type
     body*: seq[VerilogNode]
 
     case kind*: VerilogNodeKinds
-    of vnkNormNumber, vnkBinNumber, vnkHexNumber:
+    of vnkNumber:
+      base*: VerilogNumberBases
       digits*: string
 
     of vnkString:
       str*: string
 
+    of vnkRange:
+      head*, tail*: VerilogNode
+
     of vnkSymbol:
       symbol*: string
-
-    of vnkScope:
-      scope*: ScopeKinds
 
     of vnkDeclare, vnkDefine:
       ident*, bitRange*, value*: VerilogNode
@@ -56,6 +66,9 @@ type
     of vnkModule:
       name*: VerilogNode
       params*: seq[VerilogNode]
+
+    of vnkScope:
+      scope: ScopeKinds
 
     of vnkInstantiate:
       module*, instance*: VerilogNode
@@ -72,99 +85,138 @@ type
     of vnkInfix, vnkPrefix:
       operator*: VerilogNode
 
-    of vnkPar, vnkCurlyGroup:
-      discard
-
-    of vnkRange:
-      head*, tail*: VerilogNode
+    of vnkGroup:
+      groupKind: VerilogGroupKinds
 
     of vnkBracketExpr:
       lookup*: VerilogNode
       index*: VerilogNode
 
     of vnkComment:
-      content*: string
+      comment*: string
       inline*: bool
 
   VNode = VerilogNode
 
-  ParserScopes = enum
-    psInitial
-    psModuleDef
-    psModule
-    psAlways
-    psCase
-    psElIf
-    psOther # initial, forever, always
+  ParserState = enum
+    psTopLevel
+    psModuldeIdent, psModuldeParams
+    
+    psDefine, psDeclare
+
+    ps
+
+func toVSymbol(name: string): VNode =
+  VNode(kind: vnkSymbol, symbol: name)
+
+func toVNumber(digits: string): VNode =
+  VNode(kind: vnkNumber, digits: digits)
+
+func toVNode(token: VToken): VNode =
+  case token.kind:
+  of vtkKeyword: toVSymbol token.keyword
+  of vtkNumber: toVNumber token.digits
+  of vtkComment:
+    VNode(kind: vnkComment, inline: token.inline, comment: token.comment)
+  else:
+    err "this kind of converting is invalid"
+
+func `$`(node: VNode): string =
+  case node.kind:
+  of vnkSymbol: node.symbol
+  of vnkBracketExpr: fmt"{node.lookup}[{node.index}]"
+  of vnkRange: fmt"{node.head}:{node.tail}"
+  of vnkNumber: node.digits
+  of vnkModule: $node.name & '(' & node.params.join(", ") & ')'
+  else:
+    err fmt"invalid conversion to string. kind: {node.kind}"
 
 
-# module <name>(a1, a2[1:2]);
+# func goTillNextSemiColon(tokens: ptr seq[VToken], startIndex: int): Natural =
+#   ## return a number as progress
+#   for i in startIndex .. tokens[].high:
+#     let t = tokens[i]
+#     if not (t.kind == vtkSeparator and t.sign == ';'):
+#       inc result
+#     else:
+#       break
 
-#   initial begin
-#     _      
-#   end
 
-#   initial expr;
-
-# endmodule
 
 func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
-  var 
+  var
     i = 0
-    nodeStack: seq[VNode]
+    vnodeStack: seq[VNode]
 
-  while true:
+  while i < tokens.len:
     let ct = tokens[i] # current token
 
-    if ct.kind == vtkKeyword:
+    case ct.kind:
+    of vtkKeyword:
       case ct.keyword:
       of "module":
-        discard
+        let
+          progress = goTillNextSemiColon(addr tokens, i+2)
+          params =
+            tokens[i+2 ..< i+2+progress].
+            removeAroundPars.
+            splitByComma.
+            parseModuleIdentDefs
+
+        acc.add VNode(kind: vnkModule,
+          name: toVSymbol tokens[i+1].keyword,
+          params: params)
+
+        inc i
 
       of "endmodule":
-        discard
-
-      of "begin":
-        discard
-
-      of "end":
-        discard
-
-      of "if":
-        discard
-
-      of "else":
-        discard
-
-      of "case":
-        discard
-
-
-      of "input":
-        discard
-
-      of "output":
-        discard
-
-      of "inout":
-        discard
-
-      of "wire":
-        discard
-
-      of "reg":
-        discard
-
-
-      of "`define":
-        discard
+        err "ENDE"
 
       else:
-        err "what?"
+        inc i
+
+      # of "begin":
+      #   discard
+
+      # of "end":
+      #   discard
+
+      # of "if":
+      #   discard
+
+      # of "else":
+      #   discard
+
+      # of "case":
+      #   discard
 
 
-  if nodeStack.len != 0:
-    err "stack is not empty"
+      # of "input":
+      #   discard
+
+      # of "output":
+      #   discard
+
+      # of "inout":
+      #   discard
+
+      # of "wire":
+      #   discard
+
+      # of "reg":
+      #   discard
+
+
+      # of "`define":
+      #   discard
+
+      # else:
+      #   err "what?"
+    else:
+      inc i
+
+    # if nodeStack.len != 0:
+    #   err "stack is not empty"
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content

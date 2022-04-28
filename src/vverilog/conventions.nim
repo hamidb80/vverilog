@@ -4,6 +4,9 @@ import std/[sequtils, macros]
 template err*(msg): untyped =
   raise newException(ValueError, msg)
 
+template impossible*: untyped =
+  err("impossible")
+
 macro alias*(id, body): untyped =
   let returnType = @[ident"untyped"]
 
@@ -16,3 +19,10 @@ macro alias*(id, body): untyped =
       body, nnkTemplateDef)
   else:
     err "unexpected kind: " & $id.kind
+
+
+# --------------------------------------------------------
+
+
+func last*[T](s: openArray[T]): T =
+  s[s.high]

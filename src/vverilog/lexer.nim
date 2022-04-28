@@ -7,11 +7,16 @@ type
     vtkString    # "hello"
     vtkNumber    # 12 4.6 3b'101
 
-    vtkScope     # () [] {}
+    vtkGroup     # () [] {}
     vtkSeparator # , : ;
 
     vtkOperator  # + - && ~^ !== ?:
     vtkComment   # //  /* */
+
+  VerilogGroupChar* = enum
+    vgcOpenPar, vgcClosePar
+    vgcOpenBracket, vgcCloseBracket
+    vgcOpenCurly, vgcCloseCurly
 
   VerilogToken* = object # verilog token
     case kind*: VerilogTokenKinds
@@ -30,8 +35,8 @@ type
     of vtkOperator:
       operator*: string
 
-    of vtkScope:
-      scope*: char
+    of vtkGroup:
+     scopeChar*: VerilogGroupChar
 
     of vtkComment:
       comment*: string
@@ -97,7 +102,16 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
         inc i
 
       of '(', ')', '[', ']', '{', '}':
-        push VerilogToken(kind: vtkScope, scope: cc)
+        let gc = case cc:
+          of '(': vgcOpenPar
+          of ')': vgcClosePar
+          of'[':  vgcOpenBracket
+          of']': vgcCloseBracket
+          of'{': vgcOpenCurly
+          of'}': vgcCloseCurly
+          else: impossible
+        
+        push VerilogToken(kind: vtkGroup, scopeChar: gc)
         inc i
 
       of Stoppers:
