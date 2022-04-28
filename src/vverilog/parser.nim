@@ -15,10 +15,16 @@ type
     vskBracket
     vsk
 
-  VerilogNumberBases* = enum
-    vnbBase10
-    vnbBinary
-    vnbHex
+  VerilogNumberKinds* = enum
+    vnInt
+    vnFloat
+    vnBinary
+    vnHex
+
+  ScopeKinds* = enum
+    skAlways
+    skForever
+    skInitial
 
   VerilogNodeKinds* = enum
     vnkNumber, vnkString, vnkRange
@@ -35,17 +41,12 @@ type
 
     vnkComment
 
-  ScopeKinds* = enum
-    skAlways
-    skForever
-    skInitial
-
-  VerilogNode = ref object
+  VerilogNode* = ref object
     body*: seq[VerilogNode]
 
     case kind*: VerilogNodeKinds
     of vnkNumber:
-      base*: VerilogNumberBases
+      numberKind*: VerilogNumberKinds
       digits*: string
 
     of vnkString:
@@ -96,11 +97,11 @@ type
       comment*: string
       inline*: bool
 
-  VNode = VerilogNode
+  VNode* = VerilogNode
 
   ParserState = enum
     psTopLevel
-    psModuldeIdent, psModuldeParams
+    psModuldeIdent, psModuldeParams, psModuleBody
     
     psDefine, psDeclare
 
@@ -151,72 +152,56 @@ func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
   while i < tokens.len:
     let ct = tokens[i] # current token
 
-    case ct.kind:
-    of vtkKeyword:
-      case ct.keyword:
-      of "module":
-        let
-          progress = goTillNextSemiColon(addr tokens, i+2)
-          params =
-            tokens[i+2 ..< i+2+progress].
-            removeAroundPars.
-            splitByComma.
-            parseModuleIdentDefs
+    matchVtoken ct:
+    of kw "module":
+      discard
 
-        acc.add VNode(kind: vnkModule,
-          name: toVSymbol tokens[i+1].keyword,
-          params: params)
+    of kw "endmodule":
+      err "ENDE"
 
-        inc i
-
-      of "endmodule":
-        err "ENDE"
-
-      else:
-        inc i
-
-      # of "begin":
-      #   discard
-
-      # of "end":
-      #   discard
-
-      # of "if":
-      #   discard
-
-      # of "else":
-      #   discard
-
-      # of "case":
-      #   discard
-
-
-      # of "input":
-      #   discard
-
-      # of "output":
-      #   discard
-
-      # of "inout":
-      #   discard
-
-      # of "wire":
-      #   discard
-
-      # of "reg":
-      #   discard
-
-
-      # of "`define":
-      #   discard
-
-      # else:
-      #   err "what?"
     else:
       inc i
 
-    # if nodeStack.len != 0:
-    #   err "stack is not empty"
+    # of "begin":
+    #   discard
+
+    # of "end":
+    #   discard
+
+    # of "if":
+    #   discard
+
+    # of "else":
+    #   discard
+
+    # of "case":
+    #   discard
+
+
+    # of "input":
+    #   discard
+
+    # of "output":
+    #   discard
+
+    # of "inout":
+    #   discard
+
+    # of "wire":
+    #   discard
+
+    # of "reg":
+    #   discard
+
+
+    # of "`define":
+    #   discard
+
+    # else:
+    #   err "what?"
+  else:
+    inc i
+
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content

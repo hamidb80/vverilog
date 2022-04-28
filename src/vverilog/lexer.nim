@@ -1,4 +1,4 @@
-import std/[strutils, strformat]
+import std/[strutils, strformat, macros, sequtils]
 import ./conventions
 
 type
@@ -7,10 +7,10 @@ type
     vtkString    # "hello"
     vtkNumber    # 12 4.6 3b'101
 
-    vtkGroup     # () [] {}
     vtkSeparator # , : ;
-
     vtkOperator  # + - && ~^ !== ?:
+
+    vtkGroup     # () [] {}
     vtkComment   # //  /* */
 
   VerilogGroupChar* = enum
@@ -36,7 +36,7 @@ type
       operator*: string
 
     of vtkGroup:
-     scopeChar*: VerilogGroupChar
+      scopeChar*: VerilogGroupChar
 
     of vtkComment:
       comment*: string
@@ -105,12 +105,12 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
         let gc = case cc:
           of '(': vgcOpenPar
           of ')': vgcClosePar
-          of'[':  vgcOpenBracket
-          of']': vgcCloseBracket
-          of'{': vgcOpenCurly
-          of'}': vgcCloseCurly
+          of '[': vgcOpenBracket
+          of ']': vgcCloseBracket
+          of '{': vgcOpenCurly
+          of '}': vgcCloseCurly
           else: impossible
-        
+
         push VerilogToken(kind: vtkGroup, scopeChar: gc)
         inc i
 
@@ -183,3 +183,67 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
 
     if cc == EoC:
       break
+
+func getField(kind: VerilogTokenKinds): string =
+  case kind:
+  of vtkKeyword: "keyword"
+  of vtkString: "content"
+  of vtkNumber: "digits"
+  of vtkSeparator: "sign"
+  of vtkOperator: "operator"
+  of vtkGroup: "scopeChar"
+  of vtkComment: "comment"
+
+
+macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
+  result = newTree(nnkCaseStmt, newDotExpr(comparator, ident"kind"))
+
+  var
+    acc: array[vtkKeyword..vtkOperator, seq[tuple[cond, code: NimNode]]]
+    elseBr = newTree(nnkElse, newStmtList newNimNode nnkDiscardStmt)
+
+  for br in branches:
+    case br.kind:
+    of nnkOfBranch:
+      let
+        cond = br[0]
+        body = br[1]
+
+      if cond.kind == nnkCommand and cond.len == 2:
+        let index =
+          case cond[0].strVal:
+          of "kw": vtkKeyword
+          of "$": vtkString
+          of "n": vtkNumber
+          of "w": vtkSeparator
+          of "o": vtkOperator
+          else: err "invalid type of condition: " & cond[0].strVal
+
+        acc[index].add (cond[1], body)
+
+      else: err "invalid condition"
+
+    of nnkElse:
+      elseBr = br
+
+    else: err "invalid entity. kind: " & $br.kind
+
+  for i, brs in acc:
+    if brs.len != 0:
+      let node =
+        newtree(nnkOfBranch, ident $i).add newStmtList do:
+          newTree(nnkCaseStmt, newDotExpr(comparator, ident getField i)).add:
+            brs.mapIt newTree(nnkOfBranch, it.cond, it.code)
+
+      node[^1][^1].add elsebr
+      result.add node
+
+  result.add elseBr
+
+  echo treeRepr result
+  echo repr result
+
+# matchVtoken t:
+# of s "1": discard
+# of d "2": discard
+# else: discard
