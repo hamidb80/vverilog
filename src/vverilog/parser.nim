@@ -1,5 +1,5 @@
 import std/[sequtils, options]
-import ./lexer
+import ./lexer, ./conventions
 
 type
   VerilogDeclareKinds* = enum
@@ -11,7 +11,7 @@ type
 
   VerilogNodeKinds* = enum
     vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString
-
+    vnkRange # 3:1
     vnkSymbol, vnkScope, vnkInstantiate
     vnkDeclare, vnkDefine, vnkAsgn
 
@@ -21,7 +21,6 @@ type
     vnkInfix, vnkPrefix
 
     vnkPar, vnkCurlyGroup
-    vnkBraketRange
     vnkBracketExpr
 
     vnkComment
@@ -33,59 +32,59 @@ type
     skInitial
 
   VerilogNode = ref object
-    body: seq[VerilogNode]
+    body*: seq[VerilogNode]
 
-    case kind: VerilogNodeKinds
+    case kind*: VerilogNodeKinds
     of vnkNormNumber, vnkBinNumber, vnkHexNumber:
-      digits: string
+      digits*: string
 
     of vnkString:
-      str: string
+      str*: string
 
     of vnkSymbol:
-      symbol: string
+      symbol*: string
 
     of vnkScope:
-      scope: ScopeKinds
+      scope*: ScopeKinds
 
     of vnkDeclare, vnkDefine:
-      ident, bitRange, value: VerilogNode
+      ident*, bitRange*, value*: VerilogNode
 
     of vnkAsgn:
-      container, newValue: VerilogNode
+      container*, newValue*: VerilogNode
 
     of vnkModule:
-      name: VerilogNode
-      params: seq[VerilogNode]
+      name*: VerilogNode
+      params*: seq[VerilogNode]
 
     of vnkInstantiate:
-      module, instance: VerilogNode
+      module*, instance*: VerilogNode
 
     of vnkCase:
-      select: VerilogNode
+      select*: VerilogNode
 
     of vnkOf:
-      comparator: Option[VerilogNode]
+      comparator*: Option[VerilogNode]
 
     of vnkElif:
-      condition: Option[VerilogNode]
+      condition*: Option[VerilogNode]
 
     of vnkInfix, vnkPrefix:
-      operator: VerilogNode
+      operator*: VerilogNode
 
     of vnkPar, vnkCurlyGroup:
       discard
 
-    of vnkBraketRange:
-      head, tail: VerilogNode
+    of vnkRange:
+      head*, tail*: VerilogNode
 
     of vnkBracketExpr:
-      lookup: VerilogNode
-      index: VerilogNode
+      lookup*: VerilogNode
+      index*: VerilogNode
 
     of vnkComment:
-      content: string
-      inline: bool
+      content*: string
+      inline*: bool
 
   VNode = VerilogNode
 
@@ -98,7 +97,16 @@ type
     psElIf
     psOther # initial, forever, always
 
-const VFinalKinds = {vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString}
+
+# module <name>(a1, a2[1:2]);
+
+#   initial begin
+#     _      
+#   end
+
+#   initial expr;
+
+# endmodule
 
 func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
   var 
@@ -110,20 +118,49 @@ func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
 
     if ct.kind == vtkKeyword:
       case ct.keyword:
-      "if"
-      "else"
-      "module"
-      "case"
-      "begin"
-      "end"
-      "endmodule"
-      "`define"
+      of "module":
+        discard
 
-      "input"
-      "output"
-      "inout"
-      "wire"
-      "reg"
+      of "endmodule":
+        discard
+
+      of "begin":
+        discard
+
+      of "end":
+        discard
+
+      of "if":
+        discard
+
+      of "else":
+        discard
+
+      of "case":
+        discard
+
+
+      of "input":
+        discard
+
+      of "output":
+        discard
+
+      of "inout":
+        discard
+
+      of "wire":
+        discard
+
+      of "reg":
+        discard
+
+
+      of "`define":
+        discard
+
+      else:
+        err "what?"
 
 
   if nodeStack.len != 0:

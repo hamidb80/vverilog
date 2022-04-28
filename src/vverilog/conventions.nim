@@ -4,7 +4,7 @@ import std/[sequtils, macros]
 template err*(msg): untyped =
   raise newException(ValueError, msg)
 
-macro def*(id, body): untyped =
+macro alias*(id, body): untyped =
   let returnType = @[ident"untyped"]
 
   case id.kind:

@@ -14,28 +14,28 @@ type
     vtkComment   # //  /* */
 
   VerilogToken* = object # verilog token
-    case kind: VerilogTokenKinds
+    case kind*: VerilogTokenKinds
     of vtkKeyword:
-      keyword: string
+      keyword*: string
 
     of vtkString:
-      content: string
+      content*: string
 
     of vtkNumber:
-      digits: string
+      digits*: string
 
     of vtkSeparator:
-      sign: char
+      sign*: char
 
     of vtkOperator:
-      operator: string
+      operator*: string
 
     of vtkScope:
-      scope: char
+      scope*: char
 
     of vtkComment:
-      comment: string
-      inline: bool
+      comment*: string
+      inline*: bool
 
   VToken* = VerilogToken
 
@@ -60,13 +60,13 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
     i = 0
     start = 0
 
-  def fetchChar(i):
+  alias fetchChar(i):
     if i in 0 ..< content.len: content[i]
     else: EoC
-  def lc: fetchChar(i-1) # last char
-  def fc: fetchChar(i+1) # forward char
-  def reset: lxState = lsInit
-  def push(newToken):
+  alias lc: fetchChar(i-1) # last char
+  alias fc: fetchChar(i+1) # forward char
+  alias reset: lxState = lsInit
+  alias push(newToken):
     yield newToken
     reset()
 
