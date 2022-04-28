@@ -2,7 +2,7 @@ import std/[strutils, strformat]
 import ./conventions
 
 type
-  VTokenKinds* = enum
+  VerilogTokenKinds* = enum
     vtkKeyword   # begin end if `pragma
     vtkString    # "hello"
     vtkNumber    # 12 4.6 3b'101
@@ -13,8 +13,8 @@ type
     vtkOperator  # + - && ~^ !== ?:
     vtkComment   # //  /* */
 
-  VToken* = object # verilog token
-    case kind: VTokenKinds
+  VerilogToken* = object # verilog token
+    case kind: VerilogTokenKinds
     of vtkKeyword:
       keyword: string
 
@@ -34,9 +34,10 @@ type
       scope: char
 
     of vtkComment:
-      inline: bool
       comment: string
+      inline: bool
 
+  VToken* = VerilogToken
 
   LexerState = enum
     lsInit
@@ -53,7 +54,7 @@ const
       '<', '!', '=', '>', '.'}
 
 
-iterator extractVTokens*(content: string): VToken =
+iterator extractVerilogTokens*(content: string): VerilogToken =
   var
     lxState = lsInit
     i = 0
@@ -92,11 +93,11 @@ iterator extractVTokens*(content: string): VToken =
         start = i
 
       of ',', ':', ';':
-        push VToken(kind: vtkSeparator, sign: cc)
+        push VerilogToken(kind: vtkSeparator, sign: cc)
         inc i
 
       of '(', ')', '[', ']', '{', '}':
-        push VToken(kind: vtkScope, scope: cc)
+        push VerilogToken(kind: vtkScope, scope: cc)
         inc i
 
       of Stoppers:
@@ -133,18 +134,18 @@ iterator extractVTokens*(content: string): VToken =
       of IdentChars:
         inc i
       else:
-        push VToken(kind: vtkKeyword, keyword: content[start ..< i])
+        push VerilogToken(kind: vtkKeyword, keyword: content[start ..< i])
 
     of lsNumber:
       case cc:
       of '.', '_', '\'', 'b', 'h', Digits, 'A' .. 'F', 'X', 'x', 'Z', 'z':
         inc i
       else:
-        push VToken(kind: vtkNumber, digits: content[start ..< i])
+        push VerilogToken(kind: vtkNumber, digits: content[start ..< i])
 
     of lsString:
       if cc == '"' and lc != '\\':
-        push VToken(kind: vtkString, content: content[start ..< i])
+        push VerilogToken(kind: vtkString, content: content[start ..< i])
 
       inc i
 
@@ -152,17 +153,17 @@ iterator extractVTokens*(content: string): VToken =
       if cc in Operators:
         inc i
       else:
-        push VToken(kind: vtkOperator, operator: content[start ..< i])
+        push VerilogToken(kind: vtkOperator, operator: content[start ..< i])
 
     of lsInlineComment:
       if cc in Newlines:
-        push VToken(kind: vtkComment, comment: content[start ..< i], inline: true)
+        push VerilogToken(kind: vtkComment, comment: content[start ..< i], inline: true)
 
       inc i
 
     of lsMultiLineComment:
       if cc == '/' and lc == '*':
-        push VToken(kind: vtkComment, comment: content[start ..< i-1], inline: false)
+        push VerilogToken(kind: vtkComment, comment: content[start ..< i-1], inline: false)
 
       inc i
 

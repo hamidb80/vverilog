@@ -24,6 +24,8 @@ type
     vnkBraketRange
     vnkBracketExpr
 
+    vnkComment
+
 
   ScopeKinds* = enum
     skAlways
@@ -79,15 +81,55 @@ type
 
     of vnkBracketExpr:
       lookup: VerilogNode
-      expr: VerilogNode
+      index: VerilogNode
 
+    of vnkComment:
+      content: string
+      inline: bool
 
-const VNodeLiteralKinds = {vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString}
+  VNode = VerilogNode
 
-func parseVerilog*(content: string): seq[VerilogNode] =
-  let tokens = toseq extractVTokens content
+  ParserScopes = enum
+    psInitial
+    psModuleDef
+    psModule
+    psAlways
+    psCase
+    psElIf
+    psOther # initial, forever, always
 
-  var i = 0
+const VFinalKinds = {vnkNormNumber, vnkBinNumber, vnkHexNumber, vnkString}
+
+func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
+  var 
+    i = 0
+    nodeStack: seq[VNode]
 
   while true:
-    break
+    let ct = tokens[i] # current token
+
+    if ct.kind == vtkKeyword:
+      case ct.keyword:
+      "if"
+      "else"
+      "module"
+      "case"
+      "begin"
+      "end"
+      "endmodule"
+      "`define"
+
+      "input"
+      "output"
+      "inout"
+      "wire"
+      "reg"
+
+
+  if nodeStack.len != 0:
+    err "stack is not empty"
+
+func parseVerilog*(content: string): seq[VNode] =
+  let tokens = toseq extractVerilogTokens content
+
+  discard parseVerilogImpl(tokens, result)
