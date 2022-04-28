@@ -30,11 +30,12 @@ type
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
 
+    vnkCall, vnkAction # dumpvars;
+
     vnkDeclare, vnkDefine, vnkAsgn, vnkInstantiate
 
     vnkModule, vnkScope
-    vnkCase, vnkOf
-    vnkElif
+    vnkCase, vnkOf, vnkElif
 
     vnkInfix, vnkPrefix
     vnkBracketExpr
@@ -58,8 +59,15 @@ type
     of vnkSymbol:
       symbol*: string
 
+    of vnkCall:
+      caller*: VerilogNode
+
+    of vnkAction:
+      action*: VerilogNode
+
     of vnkDeclare, vnkDefine:
-      ident*, bitRange*, value*: VerilogNode
+      dkind*: VerilogDeclareKinds
+      ident*: VerilogNode
 
     of vnkAsgn:
       container*, newValue*: VerilogNode
@@ -102,10 +110,22 @@ type
   ParserState = enum
     psTopLevel
     psModuldeIdent, psModuldeParams, psModuleBody
-    
-    psDefine, psDeclare
 
-    ps
+    psDefine, psDeclare, psAsgn
+    psInstanceName, psInstanceArgs
+    psScopeBody, psScopeArgs # always @ (...)
+
+
+    psIdentDef, psIdentDefBus
+    psRange,
+
+    psBracket, psBracketExpr
+    psPar, psCurly
+    psIfCond, psIfBody, psElseBody
+    psCaseParam, psCaseOfParam, psCaseOfBody
+
+    psEq, psPrefix, psInfix
+
 
 func toVSymbol(name: string): VNode =
   VNode(kind: vnkSymbol, symbol: name)
@@ -133,77 +153,112 @@ func `$`(node: VNode): string =
     err fmt"invalid conversion to string. kind: {node.kind}"
 
 
-# func goTillNextSemiColon(tokens: ptr seq[VToken], startIndex: int): Natural =
-#   ## return a number as progress
-#   for i in startIndex .. tokens[].high:
-#     let t = tokens[i]
-#     if not (t.kind == vtkSeparator and t.sign == ';'):
-#       inc result
-#     else:
-#       break
+func pull(s: var seq) =
+  del s, s.high
+
+func pull[T](s: var seq[T], v: T) =
+  s[^1] = v
 
 
+func toDeclareKind(s: string): VerilogDeclareKinds =
+  case s:
+  of "input": vdkInput
+  of "output": vdkOutput
+  of "inout": vdkInOut
+  of "reg": vdkReg
+  of "wire": vdkWire
+  else: err "invalid declare type"
 
-func parseVerilogImpl(tokens: seq[VToken], acc: var seq[VNode]): int =
+
+func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
   var
     i = 0
-    vnodeStack: seq[VNode]
+    nodeStack: seq[VNode]
+    stateStack: seq[ParserState] = @[psTopLevel]
 
   while i < tokens.len:
     let ct = tokens[i] # current token
+    debugecho ct, stateStack
 
-    matchVtoken ct:
-    of kw "module":
-      discard
+    case stateStack.last:
+    of psTopLevel:
+      matchVtoken ct:
+      of kw "module":
+        nodeStack.add VNode(kind: vnkModule)
+        stateStack.add psModuldeIdent
+        inc i
 
-    of kw "endmodule":
-      err "ENDE"
+      else: err "not implemented: " &  $ct
 
-    else:
+    of psModuldeIdent:
+      assert ct.kind == vtkKeyword
+      nodeStack.last.name = toVNode ct
+
+      pull stateStack
+
+      assert tokens[i+1].isGroup '('
+      stateStack.add [psModuldeParams, psIdentDef]
+
+      inc i, 2
+
+    of psModuldeParams:
+      if ct.isSep ',':
+        let t = nodeStack.pop
+        nodeStack[^1].body.add t
+        inc i
+
+      elif ct.isGroup ')':
+        let t = nodeStack.pop
+        nodeStack[^1].body.add t 
+        inc i
+        pull stateStack, psModuleBody
+
+      elif ct.kind == vtkKeyword:
+        stateStack.pull psIdentDef
+
+      else:
+        err "invalid token"
+
+    of psIdentDef:
+      if ct.kind == vtkKeyword:
+        nodeStack.add toVNode ct
+        stateStack.pull psIdentDefBus
+      else:
+        err "invalid ident"
+
+    of psIdentDefBus:
+      if ct.isGroup '[':
+        let t = nodeStack.pop
+        nodeStack.add VNode(kind: vnkBracketExpr, lookup: t)
+        stateStack.pull psBracketExpr
+      else:
+        pull stateStack
+
       inc i
 
-    # of "begin":
-    #   discard
+    of psBracketExpr:
+      assert tokens[i+1].isSep ':'
+      nodeStack[^1].index = VNode(kind: vnkRange,
+        head: toVnode ct,
+        tail: toVNode tokens[i+2])
 
-    # of "end":
-    #   discard
+      pull stateStack
+      inc i, 4
 
-    # of "if":
-    #   discard
+    of psModuleBody:
+      matchVtoken ct:
+      of kw"endmodule":
+        stateStack.pull
+        result.add nodeStack.pop
+        inc i
 
-    # of "else":
-    #   discard
+      of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
+        # toDeclareKind ct.keyword
+        # inc i
+        discard
 
-    # of "case":
-    #   discard
-
-
-    # of "input":
-    #   discard
-
-    # of "output":
-    #   discard
-
-    # of "inout":
-    #   discard
-
-    # of "wire":
-    #   discard
-
-    # of "reg":
-    #   discard
-
-
-    # of "`define":
-    #   discard
-
-    # else:
-    #   err "what?"
-  else:
-    inc i
-
+    else: err "why?"
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
-
-  discard parseVerilogImpl(tokens, result)
+  parseVerilogImpl(tokens)

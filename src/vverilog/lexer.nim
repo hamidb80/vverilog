@@ -4,13 +4,12 @@ import ./conventions
 type
   VerilogTokenKinds* = enum
     vtkKeyword   # begin end if `pragma
-    vtkString    # "hello"
-    vtkNumber    # 12 4.6 3b'101
-
     vtkSeparator # , : ;
     vtkOperator  # + - && ~^ !== ?:
-
     vtkGroup     # () [] {}
+
+    vtkString    # "hello"
+    vtkNumber    # 12 4.6 3b'101
     vtkComment   # //  /* */
 
   VerilogGroupChar* = enum
@@ -36,7 +35,7 @@ type
       operator*: string
 
     of vtkGroup:
-      scopeChar*: VerilogGroupChar
+      group*: VerilogGroupChar
 
     of vtkComment:
       comment*: string
@@ -58,6 +57,16 @@ const
   Operators = {'+', '-', '*', '/', '#', '@', '~', '?', '^', '|', '&', '%',
       '<', '!', '=', '>', '.'}
 
+
+func toGroupChar(ch: char): VerilogGroupChar =
+  case ch:
+  of '(': vgcOpenPar
+  of ')': vgcClosePar
+  of '[': vgcOpenBracket
+  of ']': vgcCloseBracket
+  of '{': vgcOpenCurly
+  of '}': vgcCloseCurly
+  else: err "invalid char"
 
 iterator extractVerilogTokens*(content: string): VerilogToken =
   var
@@ -102,16 +111,7 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
         inc i
 
       of '(', ')', '[', ']', '{', '}':
-        let gc = case cc:
-          of '(': vgcOpenPar
-          of ')': vgcClosePar
-          of '[': vgcOpenBracket
-          of ']': vgcCloseBracket
-          of '{': vgcOpenCurly
-          of '}': vgcCloseCurly
-          else: impossible
-
-        push VerilogToken(kind: vtkGroup, scopeChar: gc)
+        push VerilogToken(kind: vtkGroup, group: toGroupChar cc)
         inc i
 
       of Stoppers:
@@ -184,51 +184,60 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
     if cc == EoC:
       break
 
+
 func getField(kind: VerilogTokenKinds): string =
   case kind:
   of vtkKeyword: "keyword"
-  of vtkString: "content"
-  of vtkNumber: "digits"
   of vtkSeparator: "sign"
   of vtkOperator: "operator"
   of vtkGroup: "scopeChar"
-  of vtkComment: "comment"
-
+  else: err "invalid"
 
 macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
   result = newTree(nnkCaseStmt, newDotExpr(comparator, ident"kind"))
 
   var
-    acc: array[vtkKeyword..vtkOperator, seq[tuple[cond, code: NimNode]]]
-    elseBr = newTree(nnkElse, newStmtList newNimNode nnkDiscardStmt)
+    acc1: array[vtkKeyword..vtkGroup, seq[tuple[cond, code: NimNode]]]
+    acc2: array[vtkString..vtkComment, NimNode]
+    elseBr = newTree(nnkElse, newStmtList newTree(nnkDiscardStmt, newEmptyNode()))
 
   for br in branches:
     case br.kind:
     of nnkOfBranch:
       let
-        cond = br[0]
-        body = br[1]
+        conds = br[0..^2]
+        body = br[^1]
 
-      if cond.kind == nnkCommand and cond.len == 2:
-        let index =
-          case cond[0].strVal:
-          of "kw": vtkKeyword
-          of "$": vtkString
-          of "n": vtkNumber
-          of "w": vtkSeparator
-          of "o": vtkOperator
-          else: err "invalid type of condition: " & cond[0].strVal
+      for c in conds:
+        if c.kind in {nnkCommand, nnkCallStrLit, nnkPrefix} and c.len == 2:
+          let index =
+            case c[0].strVal:
+            of "kw": vtkKeyword
+            of "w": vtkSeparator
+            of "o": vtkOperator
+            of "g": vtkGroup
+            else: err "invalid type of condition: " & c[0].strVal
 
-        acc[index].add (cond[1], body)
+          acc1[index].add (c[1], body)
 
-      else: err "invalid condition"
+        elif c.kind == nnkIdent:
+          let index =
+            case c.strval:
+            of "s": vtkString
+            of "n": vtkNumber
+            of "c": vtkComment
+            else: err "invalid ident kind"
+
+          acc2[index] = body
+
+        else: err "invalid condition"
 
     of nnkElse:
       elseBr = br
 
     else: err "invalid entity. kind: " & $br.kind
 
-  for i, brs in acc:
+  for i, brs in acc1:
     if brs.len != 0:
       let node =
         newtree(nnkOfBranch, ident $i).add newStmtList do:
@@ -238,12 +247,39 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
       node[^1][^1].add elsebr
       result.add node
 
+  for i, code in acc2:
+    if code != nil:
+      result.add newtree(nnkOfBranch, ident $i, code)
+
   result.add elseBr
 
-  echo treeRepr result
-  echo repr result
+  # echo treeRepr result
+  # echo repr result
 
+
+
+func toKeyword*(s:string): VToken =
+  VToken(kind: vtkKeyword, keyword: s)
+
+func isGroup*(t: Vtoken, c:char): bool =
+  t.kind ==  vtkGroup and t.group == toGroupChar c
+
+func isSep*(t:VToken, c:char): bool =
+  assert c in ",:;"
+  t.kind == vtkseparator and t.sign == c
+
+
+# test -----------------------------------------
+
+# let t = VToken(kind: vtkString, content: "hey")
 # matchVtoken t:
-# of s "1": discard
-# of d "2": discard
+# of w '1': discard
+# of kw"1", kw"2": discard
+# of n: discard
 # else: discard
+
+# dumptree:
+#   case 1:
+#   of 2: discard
+#   of 3, 4: discard
+#   else: discard
