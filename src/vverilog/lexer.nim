@@ -51,7 +51,7 @@ const
   Stoppers = Whitespace + {EoC}
 
 
-iterator vlex*(content: string): VToken =
+iterator extractVTokens*(content: string): VToken =
   var
     lxState = lsInit
     i = 0
