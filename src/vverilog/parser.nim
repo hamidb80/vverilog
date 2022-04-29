@@ -362,30 +362,31 @@ func `$`*(vn: VNode): string =
     openClose[0] & vn.body.join(", ") & openClose[1]
 
   of vnkCall: $vn.caller & '(' & vn.body.join(", ") & ')'
-  of vnkDeclare: 
+  of vnkBracketExpr: fmt"{vn.lookup}[{vn.index}]"
+
+  of vnkDeclare:
     let b =
       if issome vn.bus: '[' & $vn.bus.get & "] "
       else: ""
 
     $vn.dkind & ' ' & b & $vn.ident & ';'
-  of vnkBracketExpr: fmt"{vn.lookup}[{vn.index}]"
 
   of vnkModule:
     "module " & $vn.name & '(' & vn.params.join(", ") & ");\n" &
     vn.body.mapIt(indent($it, IndentSize)).join("\n") &
     "\nendmodule"
 
-  # of vnkDefine:
-  # of vnkAsgn:
-  # of vnkInstantiate:
-  # of vnkModule:
-  # of vnkScope:
+  of vnkInfix: $vn.body[0] & ' ' & $vn.operator & ' ' & $vn.body[1]
+  of vnkPrefix: $vn.operator & $vn.body[0]
+
+  of vnkInstantiate: $vn.module & ' ' & $vn.instance  & '(' & vn.body.join(", ") & ");"
+  # of vnkElif:
+
   # of vnkCase:
   # of vnkOf:
-  # of vnkElif:
-  # of vnkInfix:
-  # of vnkPrefix:
-  # of vnkBracketExpr:
+
+  # of vnkDefine:
+  # of vnkAsgn:
 
   of vnkComment:
     if vn.inline:
