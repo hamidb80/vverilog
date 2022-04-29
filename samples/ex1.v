@@ -1,6 +1,6 @@
-module stimulus(clk, number[7:0]);
+module stimulus(clk, number);
 
 input clk;
-input number;
+input [7:0] number;
 
 endmodule

@@ -66,6 +66,7 @@ type
 
     of vnkDeclare, vnkDefine:
       dkind*: VerilogDeclareKinds
+      bus*: Option[VerilogNode]
       ident*: VerilogNode
 
     of vnkAsgn:
@@ -111,14 +112,14 @@ type
     psModuldeIdent, psModuldeParams, psModuleBody
 
     psDefine, psAsgn
-    psDeclareIdent, psDeclareBus
+    psDeclareStart, psDeclareIdent, psDeclareBus, psDeclareEnd
 
     psInstanceName, psInstanceArgs
     psScopeBody, psScopeArgs # always @ (...)
 
 
-    psIdentDef, psIdentDefBus
-    psRange,
+    psIdentDef, psIdentDefBus, psDeclareArray
+    psRange
 
     psBracket, psBracketExpr
     psPar, psCurly
@@ -153,17 +154,17 @@ func toDeclareKind(s: string): VerilogDeclareKinds =
   else: err "invalid declare type"
 
 
-func push[T](s: var seq[T], v: T) =
+template push(v): untyped {.dirty.} =
   debugecho "<<< added ", v
-  s.add v
+  stateStack.add v
 
-func pull[T](s: var seq[T]) =
-  debugecho ">>> pulled ", s[s.high]
-  del s, s.high
+template pull(): untyped {.dirty.} =
+  debugecho ">>> pulled ", stateStack[stateStack.high]
+  del stateStack, stateStack.high
 
-func pullPush[T](s: var seq[T], v: T) =
-  pull s
-  push s,v
+template pullPush(v): untyped {.dirty.} =
+  pull()
+  push(v)
 
 
 func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
@@ -181,7 +182,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
     debugecho ": : : : : :"
 
     case stateStack.last:
-    
+
     of psTopLevel:
       matchVtoken ct:
       of kw "module":
@@ -195,7 +196,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       assert ct.kind == vtkKeyword
       nodeStack.last.name = toVNode ct
 
-      pull stateStack
+      pull()
 
       assert tokens[i+1].isGroup '('
       stateStack.add [psModuldeParams, psIdentDef]
@@ -210,7 +211,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       of g vgcClosePar:
-        stateStack.pullPush psModuleBody
+        pullPush psModuleBody
 
         if nodeStack[^1].kind in {vnkSymbol, vnkBracketExpr}:
           let p = nodeStack.pop
@@ -220,7 +221,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i, 2
 
       of kw:
-        stateStack.add psIdentDef
+        push psIdentDef
 
       else:
         err "invalid token"
@@ -229,9 +230,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       matchVtoken ct:
       of kw:
         nodeStack.add toVNode ct
-        stateStack.pullPush psIdentDefBus
+        pullPush psIdentDefBus
         inc i
-      
+
       else:
         err "invalid ident"
 
@@ -239,15 +240,15 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       matchVtoken ct:
       of g vgcOpenBracket:
         nodeStack.add VNode(kind: vnkBracketExpr, lookup: nodeStack.pop)
-        stateStack.pullPush psBracketExpr
+        pullPush psBracketExpr
         inc i
 
       of g vgcCloseBracket:
-        stateStack.pull
+        pull
         inc i
 
       else:
-        pull stateStack
+        pull
 
     of psBracketExpr:
       assert tokens[i+1].isSep ':'
@@ -255,28 +256,65 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         head: toVnode ct,
         tail: toVNode tokens[i+2])
 
-      stateStack.pullPush psIdentDefBus
+      pullPush psIdentDefBus
       inc i, 3
+
+    of psDeclareEnd:
+      let p = nodeStack.pop
+      nodestack.last.body.add p
+      pull
+
+      inc i
+
+    of psDeclareStart:
+      nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
+      pullpush psDeclareBus
+      inc i
+
+    of psDeclareBus:
+      matchVtoken ct:
+      of g vgcOpenBracket:
+        push psRange
+        inc i
+
+      of g vgcCloseBracket:
+        let p = nodeStack.pop
+        nodeStack.last.bus = some p
+        inc i
+
+      of kw:
+        pullpush psDeclareIdent
+
+      else: err "what"
 
     of psDeclareIdent:
       matchVtoken ct:
       of kw:
         nodestack.last.ident = toVNode ct
-        stateStack.pullPush psDeclareBus
+        pullPush psDeclareArray
 
       else: err "what"
 
       inc i
 
-    of psDeclareBus:
+    of psRange:
+      assert tokens[i+1].isSep ':'
+      nodeStack.add VNode(kind: vnkRange,
+        head: toVnode ct,
+        tail: toVNode tokens[i+2])
+
+      pull
+      inc i, 3
+
+    of psDeclareArray:
       matchVtoken ct:
       of w skSemiColon:
-        nodestack.last.body.add nodestack.pop
-        stateStack.pull
+        pullpush psDeclareEnd
+
+      of g vgcCloseBracket:
+        inc i
 
       else: err "what"
-
-      inc i
 
     of psModuleBody:
       matchVtoken ct:
@@ -285,12 +323,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
-        nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
-        stateStack.add psDeclareIdent
+        push psDeclareStart
 
-        inc i
-
-    else: err "why?"
+    else: err "this parser state is not implemented: " & $stateStack.last
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
@@ -304,6 +339,8 @@ func `$`*(k: VerilogDeclareKinds): string =
   of vdkInOut: "inout"
   of vdkReg: "reg"
   of vdkWire: "wire"
+
+const IndentSize = 4
 
 func `$`*(vn: VNode): string =
   case vn.kind:
@@ -325,10 +362,18 @@ func `$`*(vn: VNode): string =
     openClose[0] & vn.body.join(", ") & openClose[1]
 
   of vnkCall: $vn.caller & '(' & vn.body.join(", ") & ')'
-  of vnkDeclare: $vn.dkind & ' ' & $vn.ident
+  of vnkDeclare: 
+    let b =
+      if issome vn.bus: '[' & $vn.bus.get & "] "
+      else: ""
+
+    $vn.dkind & ' ' & b & $vn.ident & ';'
   of vnkBracketExpr: fmt"{vn.lookup}[{vn.index}]"
 
-  of vnkModule: "module " & $vn.name & '(' & vn.params.join(", ") & ");\nendmodule"
+  of vnkModule:
+    "module " & $vn.name & '(' & vn.params.join(", ") & ");\n" &
+    vn.body.mapIt(indent($it, IndentSize)).join("\n") &
+    "\nendmodule"
 
   # of vnkDefine:
   # of vnkAsgn:
