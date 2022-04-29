@@ -12,6 +12,11 @@ type
     vtkNumber    # 12 4.6 3b'101
     vtkComment   # //  /* */
 
+  SeparatorKinds* = enum
+    skSemiColon
+    skColon
+    skComma
+
   VerilogGroupChar* = enum
     vgcOpenPar, vgcClosePar
     vgcOpenBracket, vgcCloseBracket
@@ -29,7 +34,7 @@ type
       digits*: string
 
     of vtkSeparator:
-      sign*: char
+      sepKind*: SeparatorKinds
 
     of vtkOperator:
       operator*: string
@@ -56,6 +61,15 @@ const
   Stoppers = Whitespace + {EoC}
   Operators = {'+', '-', '*', '/', '#', '@', '~', '?', '^', '|', '&', '%',
       '<', '!', '=', '>', '.'}
+
+
+func toSep*(c: char): SeparatorKinds =
+  case c:
+  of ':': skColon
+  of ';': skSemiColon
+  of ',': skComma
+  else:
+    err "invalid cahr"
 
 
 func toGroupChar(ch: char): VerilogGroupChar =
@@ -107,7 +121,7 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
         start = i
 
       of ',', ':', ';':
-        push VerilogToken(kind: vtkSeparator, sign: cc)
+        push VerilogToken(kind: vtkSeparator, sepKind: toSep cc)
         inc i
 
       of '(', ')', '[', ']', '{', '}':
@@ -188,17 +202,29 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
 func getField(kind: VerilogTokenKinds): string =
   case kind:
   of vtkKeyword: "keyword"
-  of vtkSeparator: "sign"
+  of vtkSeparator: "sepKind"
   of vtkOperator: "operator"
-  of vtkGroup: "scopeChar"
-  else: err "invalid"
+  of vtkGroup: "group"
+  else: err "get field for this type is not implemented: " & $kind
+
+func abbrToTkind(abbr: string): VerilogTokenKinds =
+  case abbr:
+  of "kw": vtkKeyword
+  of "w": vtkSeparator
+  of "o": vtkOperator
+  of "g": vtkGroup
+  of "s": vtkString
+  of "n": vtkNumber
+  of "c": vtkComment
+  else: err "what? " & abbr
+
 
 macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
   result = newTree(nnkCaseStmt, newDotExpr(comparator, ident"kind"))
 
   var
-    acc1: array[vtkKeyword..vtkGroup, seq[tuple[cond, code: NimNode]]]
-    acc2: array[vtkString..vtkComment, NimNode]
+    acc1: array[VerilogTokenKinds, seq[tuple[cond, code: NimNode]]]
+    acc2: array[VerilogTokenKinds, NimNode]
     elseBr = newTree(nnkElse, newStmtList newTree(nnkDiscardStmt, newEmptyNode()))
 
   for br in branches:
@@ -210,27 +236,15 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
 
       for c in conds:
         if c.kind in {nnkCommand, nnkCallStrLit, nnkPrefix} and c.len == 2:
-          let index =
-            case c[0].strVal:
-            of "kw": vtkKeyword
-            of "w": vtkSeparator
-            of "o": vtkOperator
-            of "g": vtkGroup
-            else: err "invalid type of condition: " & c[0].strVal
-
+          let index = abbrToTkind c[0].strVal
           acc1[index].add (c[1], body)
 
         elif c.kind == nnkIdent:
-          let index =
-            case c.strval:
-            of "s": vtkString
-            of "n": vtkNumber
-            of "c": vtkComment
-            else: err "invalid ident kind"
-
+          let index = abbrToTkind c.strval
           acc2[index] = body
 
-        else: err "invalid condition"
+        else: 
+          err "invalid condition"
 
     of nnkElse:
       elseBr = br
@@ -258,15 +272,15 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
 
 
 
-func toKeyword*(s:string): VToken =
+func toKeyword*(s: string): VToken =
   VToken(kind: vtkKeyword, keyword: s)
 
-func isGroup*(t: Vtoken, c:char): bool =
-  t.kind ==  vtkGroup and t.group == toGroupChar c
+func isGroup*(t: Vtoken, c: char): bool =
+  t.kind == vtkGroup and t.group == toGroupChar c
 
-func isSep*(t:VToken, c:char): bool =
+func isSep*(t: VToken, c: char): bool =
   assert c in ",:;"
-  t.kind == vtkseparator and t.sign == c
+  t.kind == vtkseparator and t.sepKind == tosep c
 
 
 # test -----------------------------------------

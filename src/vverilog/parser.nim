@@ -10,10 +10,9 @@ type
     vdkWire
 
   VerilogGroupKinds* = enum
-    vskBeginEnd
     vskPar
     vskBracket
-    vsk
+    vskCurly
 
   VerilogNumberKinds* = enum
     vnInt
@@ -111,7 +110,9 @@ type
     psTopLevel
     psModuldeIdent, psModuldeParams, psModuleBody
 
-    psDefine, psDeclare, psAsgn
+    psDefine, psAsgn
+    psDeclareIdent, psDeclareBus
+
     psInstanceName, psInstanceArgs
     psScopeBody, psScopeArgs # always @ (...)
 
@@ -142,24 +143,6 @@ func toVNode(token: VToken): VNode =
   else:
     err "this kind of converting is invalid"
 
-func `$`(node: VNode): string =
-  case node.kind:
-  of vnkSymbol: node.symbol
-  of vnkBracketExpr: fmt"{node.lookup}[{node.index}]"
-  of vnkRange: fmt"{node.head}:{node.tail}"
-  of vnkNumber: node.digits
-  of vnkModule: $node.name & '(' & node.params.join(", ") & ')'
-  else:
-    err fmt"invalid conversion to string. kind: {node.kind}"
-
-
-func pull(s: var seq) =
-  del s, s.high
-
-func pull[T](s: var seq[T], v: T) =
-  s[^1] = v
-
-
 func toDeclareKind(s: string): VerilogDeclareKinds =
   case s:
   of "input": vdkInput
@@ -170,6 +153,19 @@ func toDeclareKind(s: string): VerilogDeclareKinds =
   else: err "invalid declare type"
 
 
+func push[T](s: var seq[T], v: T) =
+  debugecho "<<< added ", v
+  s.add v
+
+func pull[T](s: var seq[T]) =
+  debugecho ">>> pulled ", s[s.high]
+  del s, s.high
+
+func pullPush[T](s: var seq[T], v: T) =
+  pull s
+  push s,v
+
+
 func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
   var
     i = 0
@@ -178,9 +174,14 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
   while i < tokens.len:
     let ct = tokens[i] # current token
-    debugecho ct, stateStack
+    debugecho " - - - - - - - - - - - - - - - - - "
+    debugecho ct
+    debugecho "/ ", stateStack.join" / "
+    debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+    debugecho ": : : : : :"
 
     case stateStack.last:
+    
     of psTopLevel:
       matchVtoken ct:
       of kw "module":
@@ -188,7 +189,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         stateStack.add psModuldeIdent
         inc i
 
-      else: err "not implemented: " &  $ct
+      else: err "not implemented: " & $ct
 
     of psModuldeIdent:
       assert ct.kind == vtkKeyword
@@ -202,39 +203,51 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       inc i, 2
 
     of psModuldeParams:
-      if ct.isSep ',':
-        let t = nodeStack.pop
-        nodeStack[^1].body.add t
+      matchVtoken ct:
+      of w skComma:
+        let p = nodeStack.pop
+        nodeStack.last.params.add p
         inc i
 
-      elif ct.isGroup ')':
-        let t = nodeStack.pop
-        nodeStack[^1].body.add t 
-        inc i
-        pull stateStack, psModuleBody
+      of g vgcClosePar:
+        stateStack.pullPush psModuleBody
 
-      elif ct.kind == vtkKeyword:
-        stateStack.pull psIdentDef
+        if nodeStack[^1].kind in {vnkSymbol, vnkBracketExpr}:
+          let p = nodeStack.pop
+          nodeStack.last.params.add p
+
+        assert tokens[i+1].isSep ';'
+        inc i, 2
+
+      of kw:
+        stateStack.add psIdentDef
 
       else:
         err "invalid token"
 
     of psIdentDef:
-      if ct.kind == vtkKeyword:
+      matchVtoken ct:
+      of kw:
         nodeStack.add toVNode ct
-        stateStack.pull psIdentDefBus
+        stateStack.pullPush psIdentDefBus
+        inc i
+      
       else:
         err "invalid ident"
 
     of psIdentDefBus:
-      if ct.isGroup '[':
-        let t = nodeStack.pop
-        nodeStack.add VNode(kind: vnkBracketExpr, lookup: t)
-        stateStack.pull psBracketExpr
+      matchVtoken ct:
+      of g vgcOpenBracket:
+        nodeStack.add VNode(kind: vnkBracketExpr, lookup: nodeStack.pop)
+        stateStack.pullPush psBracketExpr
+        inc i
+
+      of g vgcCloseBracket:
+        stateStack.pull
+        inc i
+
       else:
         pull stateStack
-
-      inc i
 
     of psBracketExpr:
       assert tokens[i+1].isSep ':'
@@ -242,23 +255,98 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         head: toVnode ct,
         tail: toVNode tokens[i+2])
 
-      pull stateStack
-      inc i, 4
+      stateStack.pullPush psIdentDefBus
+      inc i, 3
+
+    of psDeclareIdent:
+      matchVtoken ct:
+      of kw:
+        nodestack.last.ident = toVNode ct
+        stateStack.pullPush psDeclareBus
+
+      else: err "what"
+
+      inc i
+
+    of psDeclareBus:
+      matchVtoken ct:
+      of w skSemiColon:
+        nodestack.last.body.add nodestack.pop
+        stateStack.pull
+
+      else: err "what"
+
+      inc i
 
     of psModuleBody:
       matchVtoken ct:
       of kw"endmodule":
-        stateStack.pull
         result.add nodeStack.pop
         inc i
 
       of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
-        # toDeclareKind ct.keyword
-        # inc i
-        discard
+        nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
+        stateStack.add psDeclareIdent
+
+        inc i
 
     else: err "why?"
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
   parseVerilogImpl(tokens)
+
+
+func `$`*(k: VerilogDeclareKinds): string =
+  case k:
+  of vdkInput: "input"
+  of vdkOutput: "output"
+  of vdkInOut: "inout"
+  of vdkReg: "reg"
+  of vdkWire: "wire"
+
+func `$`*(vn: VNode): string =
+  case vn.kind:
+
+  of vnkNumber: vn.digits
+  of vnkString: '"' & vn.str & '"'
+  of vnkRange: $vn.head & ':' & $vn.tail
+  of vnkSymbol: vn.symbol
+
+  of vnkAction: $vn.action
+
+  of vnkGroup:
+    let openClose =
+      case vn.groupKind:
+      of vskPar: ['(', ')']
+      of vskBracket: ['[', ']']
+      of vskCurly: ['{', '}']
+
+    openClose[0] & vn.body.join(", ") & openClose[1]
+
+  of vnkCall: $vn.caller & '(' & vn.body.join(", ") & ')'
+  of vnkDeclare: $vn.dkind & ' ' & $vn.ident
+  of vnkBracketExpr: fmt"{vn.lookup}[{vn.index}]"
+
+  of vnkModule: "module " & $vn.name & '(' & vn.params.join(", ") & ");\nendmodule"
+
+  # of vnkDefine:
+  # of vnkAsgn:
+  # of vnkInstantiate:
+  # of vnkModule:
+  # of vnkScope:
+  # of vnkCase:
+  # of vnkOf:
+  # of vnkElif:
+  # of vnkInfix:
+  # of vnkPrefix:
+  # of vnkBracketExpr:
+
+  of vnkComment:
+    if vn.inline:
+      "//" & vn.comment
+    else:
+      "/*" & vn.comment & "*/"
+
+  else:
+    err "wow"
