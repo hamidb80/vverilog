@@ -68,6 +68,7 @@ type
       dkind*: VerilogDeclareKinds
       bus*: Option[VerilogNode]
       ident*: VerilogNode
+      vector*: Option[VerilogNode]
 
     of vnkAsgn:
       container*, newValue*: VerilogNode
@@ -131,6 +132,94 @@ type
     psCaseParam, psCaseOfParam, psCaseOfBody
 
     psOperator
+
+
+
+func `$`*(k: VerilogDeclareKinds): string =
+  case k:
+  of vdkInput: "input"
+  of vdkOutput: "output"
+  of vdkInOut: "inout"
+  of vdkReg: "reg"
+  of vdkWire: "wire"
+
+const indentSize = 4
+
+func toString(vn: VNode, depth: int = 0): string =
+  let t =
+    case vn.kind:
+
+    of vnkNumber: vn.digits
+    of vnkString: '"' & vn.str & '"'
+    of vnkSymbol: vn.symbol
+
+    of vnkAction: toString(vn.action, depth+1) & ";\n"
+    of vnkRange: '[' & toString(vn.head) & ':' & toString(vn.tail) & ']'
+
+    of vnkGroup:
+      let openClose =
+        case vn.groupKind:
+        of vskPar: ['(', ')']
+        of vskBracket: ['[', ']']
+        of vskCurly: ['{', '}']
+
+      openClose[0] & vn.body.mapIt(it.toString).join(", ") & openClose[1]
+
+    of vnkCall:
+      toString(vn.caller) & '(' &
+      vn.body.mapIt(it.toString).join(", ") & ')'
+
+    of vnkBracketExpr:
+      toString(vn.lookup) & '[' & toString(vn.index) & ']'
+
+    of vnkDeclare:
+      let 
+        b =
+          if issome vn.bus: toString(vn.bus.get) & ' '
+          else: ""
+        e =
+          if issome vn.vector: ' ' & toString(vn.vector.get)
+          else: ""
+
+      $vn.dkind & ' ' & b & toString(vn.ident) & e & ';'
+
+    of vnkModule:
+      "module " & toString(vn.name) &
+      '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
+      vn.body.mapIt(it.toString depth+1).join("\n") &
+      "\nendmodule"
+
+    of vnkPrefix: vn.operator & toString(vn.body[0])
+
+    of vnkInfix:
+      toString(vn.body[0]) & ' ' &
+      vn.operator & ' ' &
+      toString(vn.body[1])
+
+    of vnkInstantiate:
+      toString(vn.module) & ' ' & toString(vn.instance) &
+      '(' & vn.body.mapIt(it.toString).join(", ") & ");"
+
+    # of vnkElif:
+
+    # of vnkCase:
+    # of vnkOf:
+
+    # of vnkDefine:
+    # of vnkAsgn:
+
+    of vnkComment:
+      if vn.inline:
+        "//" & vn.comment
+      else:
+        "/*" & vn.comment & "*/"
+
+    else: err "wow"
+
+  repeat(" ", depth * indentSize) & t
+
+func `$`*(vn: VNode): string =
+  toString vn
 
 
 func toVSymbol(name: string): VNode =
@@ -279,11 +368,15 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psDeclareArray:
         matchVtoken ct:
-        of w skSemiColon:
-          switch psDeclareEnd
+        of g vgcOpenBracket:
+          follow psBracketStart
 
-        of g vgcCloseBracket:
-          inc i
+        of w skSemiColon:
+          if nodestack.last.kind == vnkRange:
+            let p = nodestack.pop
+            nodestack.last.vector = some p
+
+          switch psDeclareEnd
 
         else: err "what"
 
@@ -407,86 +500,3 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
   parseVerilogImpl tokens
-
-
-func `$`*(k: VerilogDeclareKinds): string =
-  case k:
-  of vdkInput: "input"
-  of vdkOutput: "output"
-  of vdkInOut: "inout"
-  of vdkReg: "reg"
-  of vdkWire: "wire"
-
-const indentSize = 4
-
-func toString(vn: VNode, depth: int = 0): string =
-  let t =
-    case vn.kind:
-
-    of vnkNumber: vn.digits
-    of vnkString: '"' & vn.str & '"'
-    of vnkSymbol: vn.symbol
-
-    of vnkAction: toString(vn.action, depth+1) & ";\n"
-    of vnkRange: toString(vn.head) & ':' & toString(vn.tail)
-
-    of vnkGroup:
-      let openClose =
-        case vn.groupKind:
-        of vskPar: ['(', ')']
-        of vskBracket: ['[', ']']
-        of vskCurly: ['{', '}']
-
-      openClose[0] & vn.body.mapIt(it.toString).join(", ") & openClose[1]
-
-    of vnkCall:
-      toString(vn.caller) & '(' &
-      vn.body.mapIt(it.toString).join(", ") & ')'
-
-    of vnkBracketExpr:
-      toString(vn.lookup) & '[' & toString(vn.index) & ']'
-
-    of vnkDeclare:
-      let b =
-        if issome vn.bus: '[' & toString(vn.bus.get) & "] "
-        else: ""
-
-      $vn.dkind & ' ' & b & toString(vn.ident) & ';'
-
-    of vnkModule:
-      "module " & toString(vn.name) &
-      '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
-      vn.body.mapIt(it.toString depth+1).join("\n") &
-      "\nendmodule"
-
-    of vnkPrefix: vn.operator & toString(vn.body[0])
-
-    of vnkInfix:
-      toString(vn.body[0]) & ' ' &
-      vn.operator & ' ' &
-      toString(vn.body[1])
-
-    of vnkInstantiate:
-      toString(vn.module) & ' ' & toString(vn.instance) &
-      '(' & vn.body.mapIt(it.toString).join(", ") & ");"
-
-    # of vnkElif:
-
-    # of vnkCase:
-    # of vnkOf:
-
-    # of vnkDefine:
-    # of vnkAsgn:
-
-    of vnkComment:
-      if vn.inline:
-        "//" & vn.comment
-      else:
-        "/*" & vn.comment & "*/"
-
-    else: err "wow"
-
-  repeat(" ", depth * indentSize) & t
-
-func `$`*(vn: VNode): string =
-  toString vn
