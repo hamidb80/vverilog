@@ -71,6 +71,11 @@ func toSep*(c: char): SeparatorKinds =
   else:
     err "invalid cahr"
 
+func fromSep*(s: SeparatorKinds): char =
+  case s:
+  of skColon: ':'
+  of skSemiColon: ';'
+  of skComma: ','
 
 func toGroupChar(ch: char): VerilogGroupChar =
   case ch:
@@ -243,7 +248,7 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
           let index = abbrToTkind c.strval
           acc2[index] = body
 
-        else: 
+        else:
           err "invalid condition"
 
     of nnkElse:

@@ -1,7 +1,7 @@
 // module stimulus(clk, number[7:0]);
 module stimulus;
 
-input clk;
+// input clk;
 // input clk, load;
 // input [7:0] number [4:0];
 // assign number[0] = 1'b1;
@@ -9,5 +9,7 @@ input clk;
 // assign number[0] = {1'b1, 2'b01};
 // `define shiftright2 3'b001
 // assign memtemp_v1 = ~Write_Mem_q1 ? memory_v1[decodenum_s1] : 24'bz;
+
+
 
 endmodule
