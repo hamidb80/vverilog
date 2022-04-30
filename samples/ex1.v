@@ -15,10 +15,10 @@ module stimulus(clk, number[7:0]);
 
 	// always @(clock or posedge reset)
 	// always @(clock)
-	// initial
-	// begin
-	// 	$display(1);
-	// 	$display(2);
+	initial
+	begin
+		$display(1);
+		$display(2);
 	// 	$display(3);
 
 		// if(load)
@@ -33,6 +33,6 @@ module stimulus(clk, number[7:0]);
 		// 	else
 		// 		count = {count[0], count[3:1]};
 		// end
-	// end
+	end
 
 endmodule

@@ -143,8 +143,7 @@ type
 
     psScopeStart, psApplyInput, psScopeInput, psScopeBodyStart, psAddToScope # always @ (...)
 
-    psBlock, psBlockAdd # TODO detecting begin/end or single-stmt
-    psSingleStmt
+    psBlock, psBlockAdd
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -613,8 +612,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # stmt => ifelse / case / = / <= / delay # / expr{call, action}
-      # of ps
+      # TODO stmt => ifelse / case / = / instance / <= / delay # / expr{call, action}
 
       of psScopeStart:
         let sk = toScopeKind ct.keyword
@@ -660,11 +658,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodestack.pop
         nodeStack.last.body.add p
         back
-
-      # of psSingleStmt:
-      #   let p = nodestack.pop
-      #   nodeStack.last.body.add p
-      #   back
 
       # ------------------------------------
 
