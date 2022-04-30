@@ -111,7 +111,7 @@ type
     psTopLevel
     psModuldeIdent, psModuldeParams, psModuleBody, psModuleAddBody
 
-    psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentsStart, psDeclareIdentsBody, psDeclareAddIdent
+    psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo, psDeclareIdentCheck, psDeclareAddIdent
 
     psAssignStart, psAssignContainerSet, psAssignOperator, psAssignValueSet, psAssignEnd
 
@@ -357,22 +357,22 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psBracketStart
 
         else:
-          switch psDeclareIdentsStart
+          switch psDeclareIdentDo
 
       of psDeclareApplyBus:
         let p = nodestack.pop
         nodestack.last.bus = some p
 
-        switch psDeclareIdentsStart
+        switch psDeclareIdentDo
         
-      of psDeclareIdentsStart:
+      of psDeclareIdentDo:
         follow psDeclareAddIdent
         follow psExprStart
 
-      of psDeclareIdentsBody:
+      of psDeclareIdentCheck:
         matchVToken ct:
         of w skComma:
-          switch psDeclareIdentsStart
+          switch psDeclareIdentDo
           inc i
 
         of w skSemiColon:
@@ -385,7 +385,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodestack.pop
         nodestack.last.idents.add p
         back
-        switch psDeclareIdentsBody
+        switch psDeclareIdentCheck
 
 
       of psAssignStart:
