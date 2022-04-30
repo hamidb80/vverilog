@@ -114,7 +114,7 @@ type
 
   ParserState = enum
     psTopLevel
-    psModuldeIdent, psModuldeParams, psModuleBody, psModuleAddBody
+    psModuldeIdent, psModuldeParams, psModuleApplyParams, psModuleBody, psModuleAddBody
 
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
     psDeclareIdentCheck, psDeclareAddIdent
@@ -123,7 +123,7 @@ type
 
     psDefineStart, psDefineIdent, psDefineValue
 
-    psParStart, psParBody
+    psParStart, psParBody, psParAdd
     psBracketStart, psBracketBody
     psCurlyStart, psCurlyBody
 
@@ -134,6 +134,7 @@ type
     psTriplefixStart, psTriplefixEnd
 
     psExprStart, psExprBody
+    psApplyCallArgs
 
     psInstanceName, psInstanceArgs
 
@@ -244,10 +245,14 @@ func toVSymbol(name: string): VNode =
 func toVNumber(digits: string): VNode =
   VNode(kind: vnkNumber, digits: digits)
 
+func toVString(s: string): VNode =
+  VNode(kind: vnkString, str: s)
+
 func toVNode(token: VToken): VNode =
   case token.kind:
   of vtkKeyword: toVSymbol token.keyword
   of vtkNumber: toVNumber token.digits
+  of vtkString: toVString token.content
   of vtkComment:
     VNode(kind: vnkComment, inline: token.inline, comment: token.comment)
   else:
@@ -324,24 +329,26 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           inc i
 
         else:
-          err "hee"
+          err "expected module ident"
 
       of psModuldeParams:
         matchVtoken ct:
         of g vgcOpenPar:
+          follow psModuleApplyParams
           follow psParStart
+          debugecho "PAR START RFED((((((((((((((((((((((((((((((((("
 
         of w skSemiColon:
-          let ln = nodestack.last
-          if ln.kind == vnkGroup and ln.groupKind == vskPar:
-            let p = nodestack.pop
-            nodestack.last.params = p.body
-
           switch psModuleBody
           inc i
 
         else:
           err "invalid token"
+
+      of psModuleApplyParams:
+        let p = nodestack.pop
+        nodestack.last.params = p.body
+        back
 
       of psModuleBody:
         follow psModuleAddBody
@@ -606,7 +613,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psExprStart:
         matchVtoken ct:
-        of kw, n:
+        of kw, n, s:
           nodeStack.add toVNode ct
           switch psExprBody
           inc i
@@ -626,7 +633,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         else:
           back
 
-      of psExprBody:
+      of psExprBody:  
         matchVtoken ct:
         of g vgcOpenBracket:
           let p = nodestack.pop
@@ -635,7 +642,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psExprStart
 
         of g vgcOpenPar:
-          err "call"
+          let p = nodestack.pop
+          nodestack.add VNode(kind: vnkCall, caller: p)
+          follow psApplyCallArgs
+          follow psParStart
 
         of o:
           if ct.operator == "=":
@@ -644,9 +654,18 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             switch psInfixStart
 
         of w skColon: # `?:` inline ifelse operator
-          switch psTriplefixStart
+          let ln = nodestack.last
+          if ln.kind == vnkInfix and ln.operator == "?":
+            switch psTriplefixStart
+          else:
+            back
 
         else: back
+
+      of psApplyCallArgs:
+        let p = nodestack.pop
+        nodestack.last.body = p.body
+        back
 
       of psBracketExprFinalize:
         let p = nodeStack.pop

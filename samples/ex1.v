@@ -1,5 +1,6 @@
-// module stimulus(clk, number[7:0]);
-module stimulus;
+module stimulus(clk, number[7:0]);
+// module stimulus(clk, number);
+// module stimulus;
 
 // input clk;
 // input clk, load;
@@ -26,5 +27,6 @@ module stimulus;
 		// end
 	// end
 
+	assign b = $display("hey", 1);
 
 endmodule
