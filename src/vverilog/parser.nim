@@ -143,6 +143,7 @@ type
 
     psScopeStart, psApplyInput, psScopeInput, psScopeBody # always @ (...)
 
+    psBlock # TODO detecting begin/end or single-stmt
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -580,7 +581,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       # stmt => ifelse / case / = / <= / delay # / expr{call, action}
-      # call
 
       of psScopeStart:
         let sk = toScopeKind ct.keyword
