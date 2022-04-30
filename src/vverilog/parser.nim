@@ -64,10 +64,13 @@ type
     of vnkAction:
       action*: VerilogNode
 
-    of vnkDeclare, vnkDefine:
+    of vnkDeclare:
       dkind*: VerilogDeclareKinds
       bus*: Option[VerilogNode]
       idents*: seq[VerilogNode]
+
+    of vnkDefine:
+      ident*, value*: VerilogNode
 
     of vnkAssign:
       container*, newValue*: VerilogNode
@@ -115,7 +118,7 @@ type
 
     psAssignStart, psAssignContainerSet, psAssignOperator, psAssignValueSet, psAssignEnd
 
-    # psDefine
+    psDefineStart,psDefineIdent,  psDefineValue
 
     psParStart, psParBody
     psBracketStart, psBracketBody
@@ -184,7 +187,9 @@ func toString(vn: VNode, depth: int = 0): string =
 
       $vn.dkind & ' ' & b & vn.idents.mapIt(toString it).join(", ") & ';'
 
-    # of vnkDefine:
+    of vnkDefine:
+      "`define " & toString(vn.ident) & ' ' & toString(vn.value)
+
     of vnkAssign:
       "assign " & toString(vn.container) & " = " & toString(vn.newValue) & ';'
 
@@ -321,18 +326,21 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           err "invalid token"
 
       of psModuleBody:
+        follow psModuleAddBody
+
         matchVtoken ct:
         of kw"endmodule":
           result.add nodeStack.pop
           inc i
 
         of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
-          follow psModuleAddBody
           follow psDeclareStart
 
         of kw"assign":
-          follow psModuleAddBody
           follow psAssignStart
+
+        of kw"`define":
+          follow psDefineStart
 
         else:
           err "ERR: " & $ct
@@ -341,8 +349,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodeStack.pop
         nodestack.last.body.add p
         back
-
-        inc i
 
 
       of psDeclareStart:
@@ -377,6 +383,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         of w skSemiColon:
           back
+          inc i
 
         else:
           err "invalid syntax"   & $ct
@@ -417,9 +424,35 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psAssignEnd:
         matchVToken ct:
-        of w skSemiColon: back
-        else: err "expected ; got:" & $ct
+        of w skSemiColon: 
+          back
+          inc i
 
+        else: 
+          err "expected ; got:" & $ct
+
+
+      of psDefineStart:
+        nodestack.add VNode(kind: vnkDefine)
+        switch psDefineIdent
+        inc i
+
+      of psDefineIdent:
+        matchVToken ct:
+        of kw:
+          nodestack.last.ident = toVNode ct
+          switch psDefineValue
+          follow psExprStart
+          inc i
+          
+        else:
+          err "exptect and identifier. got: " & $ct 
+
+      of psDefineValue:
+        let p = nodestack.pop
+        nodestack.last.value = p
+        back
+        dec i
 
       of psParStart:
         matchVtoken ct:
@@ -493,6 +526,12 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       # of psCurlyStart:
       # of psCurlyBody:
+
+      # define
+      # alawyas
+      # block
+      # ifelse
+      # case
 
       # ------------------------------------
 
