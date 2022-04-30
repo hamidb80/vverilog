@@ -271,18 +271,6 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
   # echo repr result
 
 
-
-func toKeyword*(s: string): VToken =
-  VToken(kind: vtkKeyword, keyword: s)
-
-func isGroup*(t: Vtoken, c: char): bool =
-  t.kind == vtkGroup and t.group == toGroupChar c
-
-func isSep*(t: VToken, c: char): bool =
-  assert c in ",:;"
-  t.kind == vtkseparator and t.sepKind == tosep c
-
-
 # test -----------------------------------------
 
 # let t = VToken(kind: vtkString, content: "hey")

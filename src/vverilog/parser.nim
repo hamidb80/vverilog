@@ -1,4 +1,4 @@
-import std/[sequtils, options, strutils, strformat]
+import std/[sequtils, options, strutils]
 import ./lexer, ./conventions
 
 type
@@ -92,7 +92,7 @@ type
       condition*: Option[VerilogNode]
 
     of vnkInfix, vnkPrefix:
-      operator*: VerilogNode
+      operator*: string
 
     of vnkGroup:
       groupKind: VerilogGroupKinds
@@ -109,26 +109,28 @@ type
 
   ParserState = enum
     psTopLevel
-    psModuldeIdent, psModuldeParams, psModuleBody
+    psModuldeIdent, psModuldeParams, psModuleBody, psModuleAddBody
 
-    psDeclareStart, psDeclareIdent, psDeclareBus, psDeclareEnd
+    # psDefine, psAsgn
+    psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdent,
+        psDeclareArray, psDeclareEnd
 
-    psDefine, psAsgn
+    psParStart, psParBody
+    psBracketStart, psBracketBody
+    psCurlyStart, psCurlyBody
 
+    psPrefixStart, psPrefixEnd
+    psInfix
+
+    psExprStart, psExpr
 
     psInstanceName, psInstanceArgs
     psScopeBody, psScopeArgs # always @ (...)
 
-
-    psIdentDef, psIdentDefBus, psDeclareArray
-    psRange
-
-    psBracket, psBracketExpr
-    psPar, psCurly
-    psIfCond, psIfBody, psElseBody
+    psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
 
-    psEq, psPrefix, psInfix
+    psOperator
 
 
 func toVSymbol(name: string): VNode =
@@ -155,19 +157,18 @@ func toDeclareKind(s: string): VerilogDeclareKinds =
   of "wire": vdkWire
   else: err "invalid declare type"
 
+
 template genController(varname): untyped =
   template follow(v): untyped {.dirty.} =
-    debugecho "<<< added ", v
-    stateStack.add v
+    varname.add v
 
   template back(): untyped {.dirty.} =
-    debugecho ">>> backed ", stateStack[stateStack.high]
-    del stateStack, stateStack.high
+    debugecho ">>> backed ", varname[varname.high]
+    del varname, varname.high
 
   template switch(v): untyped {.dirty.} =
     back()
     follow(v)
-
 
 func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
   var
@@ -185,158 +186,227 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
     debugecho "> ", nodeStack.mapIt(it.kind).join" > "
     debugecho ": : : : : :"
 
-    case stateStack.last:
-
-    of psTopLevel:
-      matchVtoken ct:
-      of kw "module":
-        nodeStack.add VNode(kind: vnkModule)
-        stateStack.add psModuldeIdent
-        inc i
-
-      else: err "not implemented: " & $ct
-
-
-    of psModuldeIdent:
-      assert ct.kind == vtkKeyword
-      nodeStack.last.name = toVNode ct
-
-      back()
-
-      assert tokens[i+1].isGroup '('
-      stateStack.add [psModuldeParams, psIdentDef]
-
-      inc i, 2
-
-    of psModuldeParams:
-      matchVtoken ct:
-      of w skComma:
-        let p = nodeStack.pop
-        nodeStack.last.params.add p
-        inc i
-
-      of g vgcClosePar:
-        switch psModuleBody
-
-        if nodeStack[^1].kind in {vnkSymbol, vnkBracketExpr}:
-          let p = nodeStack.pop
-          nodeStack.last.params.add p
-
-        assert tokens[i+1].isSep ';'
-        inc i, 2
-
-      of kw:
-        follow psIdentDef
-
-      else:
-        err "invalid token"
-
-    of psModuleBody:
-      matchVtoken ct:
-      of kw"endmodule":
-        result.add nodeStack.pop
-        inc i
-
-      of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
-        follow psDeclareStart
-
-
-    of psDeclareStart:
-      nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
-      switch psDeclareBus
+    if ct.kind == vtkComment:
+      debugEcho ">>> SKIPPED"
       inc i
-    
-    of psDeclareBus:
-      matchVtoken ct:
-      of g vgcOpenBracket:
-        follow psRange
-        inc i
+      continue
 
-      of g vgcCloseBracket:
+    case stateStack.last:
+      of psTopLevel:
+        matchVtoken ct:
+        of kw "module":
+          nodeStack.add VNode(kind: vnkModule)
+          stateStack.add psModuldeIdent
+          inc i
+
+        else: err "not implemented: " & $ct
+
+
+      of psModuldeIdent:
+        matchVtoken ct:
+        of kw:
+          nodeStack.last.name = toVNode ct
+          switch psModuldeParams
+          inc i
+
+        else:
+          err "hee"
+
+      of psModuldeParams:
+        matchVtoken ct:
+        of g vgcOpenPar:
+          follow psParStart
+
+        of w skSemiColon:
+          let ln = nodestack.last
+          if ln.kind == vnkGroup and ln.groupKind == vskPar:
+            let p = nodestack.pop
+            nodestack.last.params = p.body
+
+          switch psModuleBody
+          inc i
+
+        else:
+          err "invalid token"
+
+      of psModuleBody:
+        matchVtoken ct:
+        of kw"endmodule":
+          result.add nodeStack.pop
+          inc i
+
+        of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
+          follow psModuleAddBody
+          follow psDeclareStart
+
+      of psModuleAddBody:
         let p = nodeStack.pop
-        nodeStack.last.bus = some p
+        nodestack.last.body.add p
+        back
+
         inc i
 
-      of kw:
+
+      of psDeclareStart:
+        nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
+        switch psDeclareBus
+        inc i
+
+      of psDeclareBus:
+        matchVtoken ct:
+        of g vgcOpenBracket:
+          switch psDeclareApplyBus
+          follow psBracketStart
+
+        of kw:
+          switch psDeclareIdent
+
+      of psDeclareApplyBus:
+        let p = nodestack.pop
+        nodestack.last.bus = some p
+
         switch psDeclareIdent
 
-      else: err "what"
+      of psDeclareIdent:
+        matchVtoken ct:
+        of kw:
+          nodestack.last.ident = toVNode ct
+          switch psDeclareArray
 
-    of psDeclareIdent:
-      matchVtoken ct:
-      of kw:
-        nodestack.last.ident = toVNode ct
-        switch psDeclareArray
+        else: err "what"
 
-      else: err "what"
-
-      inc i
-
-    of psDeclareArray:
-      matchVtoken ct:
-      of w skSemiColon:
-        switch psDeclareEnd
-
-      of g vgcCloseBracket:
         inc i
 
-      else: err "what"
-    
-    of psDeclareEnd:
-      let p = nodeStack.pop
-      nodestack.last.body.add p
-      back
+      of psDeclareArray:
+        matchVtoken ct:
+        of w skSemiColon:
+          switch psDeclareEnd
 
-      inc i
+        of g vgcCloseBracket:
+          inc i
 
+        else: err "what"
 
-    of psIdentDef:
-      matchVtoken ct:
-      of kw:
-        nodeStack.add toVNode ct
-        switch psIdentDefBus
-        inc i
-
-      else:
-        err "invalid ident"
-
-    of psIdentDefBus:
-      matchVtoken ct:
-      of g vgcOpenBracket:
-        nodeStack.add VNode(kind: vnkBracketExpr, lookup: nodeStack.pop)
-        switch psBracketExpr
-        inc i
-
-      of g vgcCloseBracket:
-        back
-        inc i
-
-      else:
+      of psDeclareEnd:
         back
 
-    of psBracketExpr:
-      assert tokens[i+1].isSep ':'
-      nodeStack[^1].index = VNode(kind: vnkRange,
-        head: toVnode ct,
-        tail: toVNode tokens[i+2])
+      # ------------------------------------
 
-      switch psIdentDefBus
-      inc i, 3
+      of psParStart:
+        matchVtoken ct:
+        of g vgcOpenPar:
+          nodeStack.add VNode(kind: vnkGroup, groupkind: vskPar)
+          switch psParBody
+          inc i
 
-    of psRange:
-      assert tokens[i+1].isSep ':'
-      nodeStack.add VNode(kind: vnkRange,
-        head: toVnode ct,
-        tail: toVNode tokens[i+2])
+        else:
+          err "invalid"
 
-      back
-      inc i, 3
-    
-    else: err "this parser state is not implemented: " & $stateStack.last
+      of psParBody:
+        matchVtoken ct:
+        of w skComma:
+          let p = nodeStack.pop
+          nodeStack.last.body.add p
+
+          follow psExprStart
+          inc i
+
+        of g vgcClosePar:
+          let p = nodeStack.pop
+          nodeStack.last.body.add p
+
+          back()
+          inc i
+
+        else:
+          follow psExprStart
+
+
+      of psBracketStart:
+        matchVtoken ct:
+        of g vgcOpenBracket:
+          nodeStack.add VNode(kind: vnkGroup, groupkind: vskBracket)
+          switch psBracketBody
+          follow psExprStart
+          inc i
+
+        else:
+          err "invalid"
+
+      of psBracketBody:
+        matchVtoken ct:
+        of g vgcCloseBracket:
+          # group/number | group/range/number
+          let
+            ex = nodeStack.pop
+            up = nodeStack.pop
+
+          if up.kind == vnkRange:
+            up.tail = ex
+            discard nodeStack.pop
+            nodeStack.add up
+
+          else:
+            nodeStack.add up
+
+
+          back()
+
+        of w skColon:
+          let p = nodestack.pop
+          nodestack.add VNode(kind: vnkRange, head: p)
+          follow psExprStart
+
+        else:
+          follow psExprStart
+
+        inc i
+
+      # of psCurlyStart:
+      # of psCurlyBody:
+
+      # ------------------------------------
+
+
+      of psExprStart:
+        matchVtoken ct:
+        of kw, n:
+          nodeStack.add toVNode ct
+          inc i
+
+        of g vgcOpenBracket:
+          switch psBracketStart
+
+        # of o:
+        #   follow psPrefixStart
+        #   inc i
+
+        else:
+          back()
+
+      of psExpr:
+        matchVtoken ct:
+        else:
+          back
+
+
+
+      of psPrefixStart:
+        nodeStack.add VNode(kind: vnkPrefix, operator: ct.operator)
+        follow psPrefixEnd
+        follow psExprStart
+        inc i
+
+      of psPrefixEnd:
+        let p = nodeStack.pop
+        nodeStack.last.body.add p
+        back
+
+      else: err "this parser state is not implemented: " & $stateStack.last
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
-  parseVerilogImpl(tokens)
+  parseVerilogImpl tokens
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -347,60 +417,76 @@ func `$`*(k: VerilogDeclareKinds): string =
   of vdkReg: "reg"
   of vdkWire: "wire"
 
-const IndentSize = 4
+const indentSize = 4
+
+func toString(vn: VNode, depth: int = 0): string =
+  let t =
+    case vn.kind:
+
+    of vnkNumber: vn.digits
+    of vnkString: '"' & vn.str & '"'
+    of vnkSymbol: vn.symbol
+
+    of vnkAction: toString(vn.action, depth+1) & ";\n"
+    of vnkRange: toString(vn.head) & ':' & toString(vn.tail)
+
+    of vnkGroup:
+      let openClose =
+        case vn.groupKind:
+        of vskPar: ['(', ')']
+        of vskBracket: ['[', ']']
+        of vskCurly: ['{', '}']
+
+      openClose[0] & vn.body.mapIt(it.toString).join(", ") & openClose[1]
+
+    of vnkCall:
+      toString(vn.caller) & '(' &
+      vn.body.mapIt(it.toString).join(", ") & ')'
+
+    of vnkBracketExpr:
+      toString(vn.lookup) & '[' & toString(vn.index) & ']'
+
+    of vnkDeclare:
+      let b =
+        if issome vn.bus: '[' & toString(vn.bus.get) & "] "
+        else: ""
+
+      $vn.dkind & ' ' & b & toString(vn.ident) & ';'
+
+    of vnkModule:
+      "module " & toString(vn.name) &
+      '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
+      vn.body.mapIt(it.toString depth+1).join("\n") &
+      "\nendmodule"
+
+    of vnkPrefix: vn.operator & toString(vn.body[0])
+
+    of vnkInfix:
+      toString(vn.body[0]) & ' ' &
+      vn.operator & ' ' &
+      toString(vn.body[1])
+
+    of vnkInstantiate:
+      toString(vn.module) & ' ' & toString(vn.instance) &
+      '(' & vn.body.mapIt(it.toString).join(", ") & ");"
+
+    # of vnkElif:
+
+    # of vnkCase:
+    # of vnkOf:
+
+    # of vnkDefine:
+    # of vnkAsgn:
+
+    of vnkComment:
+      if vn.inline:
+        "//" & vn.comment
+      else:
+        "/*" & vn.comment & "*/"
+
+    else: err "wow"
+
+  repeat(" ", depth * indentSize) & t
 
 func `$`*(vn: VNode): string =
-  case vn.kind:
-
-  of vnkNumber: vn.digits
-  of vnkString: '"' & vn.str & '"'
-  of vnkRange: $vn.head & ':' & $vn.tail
-  of vnkSymbol: vn.symbol
-
-  of vnkAction: $vn.action
-
-  of vnkGroup:
-    let openClose =
-      case vn.groupKind:
-      of vskPar: ['(', ')']
-      of vskBracket: ['[', ']']
-      of vskCurly: ['{', '}']
-
-    openClose[0] & vn.body.join(", ") & openClose[1]
-
-  of vnkCall: $vn.caller & '(' & vn.body.join(", ") & ')'
-  of vnkBracketExpr: fmt"{vn.lookup}[{vn.index}]"
-
-  of vnkDeclare:
-    let b =
-      if issome vn.bus: '[' & $vn.bus.get & "] "
-      else: ""
-
-    $vn.dkind & ' ' & b & $vn.ident & ';'
-
-  of vnkModule:
-    "module " & $vn.name & '(' & vn.params.join(", ") & ");\n" &
-    vn.body.mapIt(indent($it, IndentSize)).join("\n") &
-    "\nendmodule"
-
-  of vnkInfix: $vn.body[0] & ' ' & $vn.operator & ' ' & $vn.body[1]
-  of vnkPrefix: $vn.operator & $vn.body[0]
-
-  of vnkInstantiate: $vn.module & ' ' & $vn.instance & '(' & vn.body.join(
-      ", ") & ");"
-  # of vnkElif:
-
-  # of vnkCase:
-  # of vnkOf:
-
-  # of vnkDefine:
-  # of vnkAsgn:
-
-  of vnkComment:
-    if vn.inline:
-      "//" & vn.comment
-    else:
-      "/*" & vn.comment & "*/"
-
-  else:
-    err "wow"
+  toString vn
