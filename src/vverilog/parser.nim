@@ -31,7 +31,7 @@ type
 
     vnkCall, vnkAction # dumpvars;
 
-    vnkDeclare, vnkDefine, vnkAsgn, vnkInstantiate
+    vnkDeclare, vnkDefine, vnkAssign, vnkInstantiate
 
     vnkModule, vnkScope
     vnkCase, vnkOf, vnkElif
@@ -70,7 +70,7 @@ type
       ident*: VerilogNode
       vector*: Option[VerilogNode]
 
-    of vnkAsgn:
+    of vnkAssign:
       container*, newValue*: VerilogNode
 
     of vnkModule:
@@ -112,9 +112,12 @@ type
     psTopLevel
     psModuldeIdent, psModuldeParams, psModuleBody, psModuleAddBody
 
-    # psDefine, psAsgn
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdent,
-        psDeclareArray, psDeclareEnd
+    psDeclareArray, psDeclareEnd
+
+    psAssignStart, psAssignContainerSet, psAssignOperator, psAssignValueSet, psAssignEnd
+
+    # psDefine
 
     psParStart, psParBody
     psBracketStart, psBracketBody
@@ -156,13 +159,13 @@ func toString(vn: VNode, depth: int = 0): string =
     of vnkSymbol: vn.symbol
 
     of vnkAction: toString(vn.action, depth+1) & ";\n"
-    of vnkRange: '[' & toString(vn.head) & ':' & toString(vn.tail) & ']'
+    of vnkRange: toString(vn.head) & ':' & toString(vn.tail)
 
     of vnkGroup:
       let openClose =
         case vn.groupKind:
         of vskPar: ['(', ')']
-        of vskBracket: ['[', ']']
+        of vskBracket: ['[', ']'] # TODO
         of vskCurly: ['{', '}']
 
       openClose[0] & vn.body.mapIt(it.toString).join(", ") & openClose[1]
@@ -172,24 +175,22 @@ func toString(vn: VNode, depth: int = 0): string =
       vn.body.mapIt(it.toString).join(", ") & ')'
 
     of vnkBracketExpr:
-      let t =
-        if vn.index.kind == vnkRange:
-          toString vn.index
-        else:
-          '[' & toString(vn.index) & ']'
-
-      toString(vn.lookup) & t
+      toString(vn.lookup) & '[' & toString(vn.index) & ']'
 
     of vnkDeclare:
-      let 
+      let
         b =
-          if issome vn.bus: toString(vn.bus.get) & ' '
+          if issome vn.bus: '[' & toString(vn.bus.get) & "] "
           else: ""
         e =
-          if issome vn.vector: ' ' & toString(vn.vector.get)
+          if issome vn.vector: " [" & toString(vn.vector.get) & "]"
           else: ""
 
       $vn.dkind & ' ' & b & toString(vn.ident) & e & ';'
+
+    # of vnkDefine:
+    of vnkAssign:
+      "assign " & toString(vn.container) & " = " & toString(vn.newValue) & ';'
 
     of vnkModule:
       "module " & toString(vn.name) &
@@ -212,9 +213,6 @@ func toString(vn: VNode, depth: int = 0): string =
 
     # of vnkCase:
     # of vnkOf:
-
-    # of vnkDefine:
-    # of vnkAsgn:
 
     of vnkComment:
       if vn.inline:
@@ -259,12 +257,12 @@ template genController(varname): untyped =
   template follow(v): untyped {.dirty.} =
     varname.add v
 
-  template back(): untyped {.dirty.} =
+  template back: untyped {.dirty.} =
     debugecho ">>> backed ", varname[varname.high]
     del varname, varname.high
 
   template switch(v): untyped {.dirty.} =
-    back()
+    back
     follow(v)
 
 func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
@@ -336,6 +334,13 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psModuleAddBody
           follow psDeclareStart
 
+        of kw"assign":
+          follow psModuleAddBody
+          follow psAssignStart
+
+        else:
+          err "www"
+
       of psModuleAddBody:
         let p = nodeStack.pop
         nodestack.last.body.add p
@@ -393,6 +398,41 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       # ------------------------------------
 
+      of psAssignStart:
+        nodestack.add VNode(kind: vnkAssign)
+        switch psAssignContainerSet
+        follow psExprStart
+        inc i
+
+      of psAssignContainerSet:
+        let p = nodestack.pop
+        nodestack.last.container = p
+
+        switch psAssignOperator
+
+      of psAssignOperator:
+        matchVToken ct:
+        of o "=":
+          switch psAssignValueSet
+          follow psExprStart
+          inc i
+
+        else:
+          err "expected = got:" & $ct
+
+
+      of psAssignValueSet:
+        let p = nodestack.pop
+        nodestack.last.newValue = p
+        switch psAssignEnd
+
+      of psAssignEnd:
+        matchVToken ct:
+        of w skSemiColon: back
+        else: err "expected ; got:" & $ct
+
+      # ------------------------------------
+
       of psParStart:
         matchVtoken ct:
         of g vgcOpenPar:
@@ -416,7 +456,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           let p = nodeStack.pop
           nodeStack.last.body.add p
 
-          back()
+          back
           inc i
 
         else:
@@ -448,10 +488,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             nodeStack.add up
 
           else:
-            nodeStack.add up
+            nodeStack.add ex
 
 
-          back()
+          back
 
         of w skColon:
           let p = nodestack.pop
@@ -473,7 +513,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of kw, n:
           nodeStack.add toVNode ct
-          follow psExpr
+          switch psExpr
           inc i
 
         of g vgcOpenBracket:
@@ -484,7 +524,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         #   inc i
 
         else:
-          back()
+          back
 
       of psExpr:
         matchVtoken ct:
