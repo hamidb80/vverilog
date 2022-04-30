@@ -483,6 +483,34 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         else:
           follow psExprStart
 
+      of psCurlyStart:
+        matchVtoken ct:
+        of g vgcOpenCurly:
+          nodeStack.add VNode(kind: vnkGroup, groupkind: vskCurly)
+          switch psCurlyBody
+          inc i
+
+        else:
+          err "invalid"
+
+      of psCurlyBody:
+        matchVtoken ct:
+        of w skComma:
+          let p = nodeStack.pop
+          nodeStack.last.body.add p
+
+          follow psExprStart
+          inc i
+
+        of g vgcCloseCurly:
+          let p = nodeStack.pop
+          nodeStack.last.body.add p
+
+          back
+          inc i
+
+        else:
+          follow psExprStart
 
       of psBracketStart:
         matchVtoken ct:
@@ -524,9 +552,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # of psCurlyStart:
-      # of psCurlyBody:
-
       # define
       # alawyas
       # block
@@ -542,11 +567,14 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           switch psExprBody
           inc i
 
-        of g vgcOpenBracket:
-          switch psBracketStart
-
         of g vgcOpenPar:
           switch psParStart
+
+        of g vgcOpenCurly:
+          switch psCurlyStart
+
+        of g vgcOpenBracket:
+          switch psBracketStart
 
         of o:
           switch psPrefixStart
