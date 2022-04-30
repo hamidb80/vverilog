@@ -141,9 +141,10 @@ type
     psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
 
-    psScopeStart, psApplyInput, psScopeInput, psScopeBody # always @ (...)
+    psScopeStart, psApplyInput, psScopeInput, psScopeBodyStart, psAddToScope # always @ (...)
 
-    psBlock # TODO detecting begin/end or single-stmt
+    psBlock, psBlockAdd # TODO detecting begin/end or single-stmt
+    psSingleStmt
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -154,7 +155,23 @@ func `$`*(k: VerilogDeclareKinds): string =
   of vdkReg: "reg"
   of vdkWire: "wire"
 
+func `$`*(k: ScopeKinds): string =
+  case k:
+  of skAlways: "always"
+  of skForever: "forever"
+  of skInitial: "initial"
+
 const indentSize = 4
+
+func needsSemiColon(vn: VNode): bool =
+  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkElif}
+
+template toValidNodeStyleStr(vn, depth): untyped =
+  let t =
+    if vn.needsSemiColon: toString(vn) & ';'
+    else: toString vn
+
+  t.indent(depth * indentSize)
 
 func toString(vn: VNode, depth: int = 0): string =
   let t =
@@ -225,6 +242,24 @@ func toString(vn: VNode, depth: int = 0): string =
     # of vnkElif:
     # of vnkCase:
     # of vnkOf:
+
+    of vnkScope:
+      let
+        inp =
+          if issome vn.input:
+            ' ' & toString(vn.input.get) & ' '
+          else:
+            ""
+
+        body =
+          if vn.body.len == 1:
+            "\n" & toValidNodeStyleStr(vn.body[0], depth + 1)
+          else:
+            "begin\n" &
+            vn.body.mapIt(toValidNodeStyleStr(it, depth+1)).join("\n") &
+            '\n' & indent("end", depth * indentSize)
+
+      $vn.scope & inp & body
 
     of vnkComment:
       if vn.inline:
@@ -308,9 +343,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       debugecho "/ ", stateStack.join" / "
       debugecho "> ", nodeStack.mapIt(it.kind).join" > "
 
-
     ## every part must set the `i`(index) after his last match
-
     case stateStack.last:
       of psTopLevel:
         matchVtoken ct:
@@ -581,6 +614,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       # stmt => ifelse / case / = / <= / delay # / expr{call, action}
+      # of ps
 
       of psScopeStart:
         let sk = toScopeKind ct.keyword
@@ -588,26 +622,49 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         switch:
           if sk == skAlways: psScopeInput
-          else: psScopeBody
+          else: psScopeBodyStart
 
         inc i
 
       of psScopeInput:
-        follow psApplyInput
+        switch psApplyInput
         follow psExprStart
 
       of psApplyInput:
         let p = nodeStack.pop
         nodestack.last.input = some p
-        switch psScopeBody
+        switch psScopeBodyStart
 
-      of psScopeBody:
+      of psScopeBodyStart:
         matchVToken ct:
         of kw"begin":
-          discard
+          switch psAddToScope
 
         else:
-          discard
+          err "what"
+
+      of psAddToScope:
+        matchVtoken ct:
+        of kw"end":
+          back
+          inc i
+
+        of w skSemiColon, kw"begin":
+          inc i
+
+        else:
+          follow psBlockAdd
+          follow psExprStart
+
+      of psBlockAdd:
+        let p = nodestack.pop
+        nodeStack.last.body.add p
+        back
+
+      # of psSingleStmt:
+      #   let p = nodestack.pop
+      #   nodeStack.last.body.add p
+      #   back
 
       # ------------------------------------
 
@@ -633,7 +690,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         else:
           back
 
-      of psExprBody:  
+      of psExprBody:
         matchVtoken ct:
         of g vgcOpenBracket:
           let p = nodestack.pop

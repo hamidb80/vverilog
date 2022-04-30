@@ -13,7 +13,12 @@ module stimulus(clk, number[7:0]);
 // assign b = $display("hey", 1);
 
 	// always @(clock or posedge reset)
-	// begin
+	always @(clock)
+	begin
+		$display(1);
+		$display(2);
+		$display(3);
+
 		// if(load)
 		// 	count = data;
 
@@ -26,6 +31,6 @@ module stimulus(clk, number[7:0]);
 		// 	else
 		// 		count = {count[0], count[3:1]};
 		// end
-	// end
+	end
 
 endmodule
