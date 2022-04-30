@@ -29,7 +29,8 @@ type
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
 
-    vnkCall, vnkAction # dumpvars;
+    vnkCall
+    vnkAction # dumpvars;
 
     vnkDeclare, vnkDefine, vnkAssign, vnkInstantiate
 
@@ -80,7 +81,8 @@ type
       params*: seq[VerilogNode]
 
     of vnkScope:
-      scope: ScopeKinds
+      scope*: ScopeKinds
+      input*: Option[VerilogNode]
 
     of vnkInstantiate:
       module*, instance*: VerilogNode
@@ -114,8 +116,8 @@ type
     psTopLevel
     psModuldeIdent, psModuldeParams, psModuleBody, psModuleAddBody
 
-    psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo,
-        psDeclareIdentCheck, psDeclareAddIdent
+    psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
+    psDeclareIdentCheck, psDeclareAddIdent
 
     psAssignStart, psAssignContainerSet, psAssignOperator, psAssignValueSet, psAssignEnd
 
@@ -134,14 +136,11 @@ type
     psExprStart, psExprBody
 
     psInstanceName, psInstanceArgs
-    psScopeBody, psScopeArgs # always @ (...)
 
     psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
 
-    psOperator
-
-    psBlock                  # TODO
+    psScopeStart, psApplyInput, psScopeInput, psScopeBody # always @ (...)
 
 
 
@@ -165,7 +164,7 @@ func toString(vn: VNode, depth: int = 0): string =
 
     of vnkAction:
       toString(vn.action, depth+1) & ";\n"
-    
+
     of vnkRange:
       toString(vn.head) & ':' & toString(vn.tail)
 
@@ -231,7 +230,7 @@ func toString(vn: VNode, depth: int = 0): string =
       else:
         "/*" & vn.comment & "*/"
 
-    else: err "to string conversation is not imlplmented"
+    else: err "to string conversation is not imlplmented: " & $vn.kind
 
   repeat(" ", depth * indentSize) & t
 
@@ -262,6 +261,13 @@ func toDeclareKind(s: string): VerilogDeclareKinds =
   of "reg": vdkReg
   of "wire": vdkWire
   else: err "invalid declare type"
+
+func toScopeKind(s: string): ScopeKinds =
+  case s:
+  of "always": skAlways
+  of "forever": skForever
+  of "initial": skInitial
+  else: err "invalid scope name"
 
 
 template genController(varname): untyped =
@@ -341,10 +347,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         follow psModuleAddBody
 
         matchVtoken ct:
-        of kw"endmodule":
-          result.add nodeStack.pop
-          inc i
-
         of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
           follow psDeclareStart
 
@@ -353,6 +355,13 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         of kw"`define":
           follow psDefineStart
+
+        of kw"always", kw"initial":
+          follow psScopeStart
+
+        of kw"endmodule":
+          result.add nodeStack.pop
+          inc i
 
         else:
           err "ERR: " & $ct
@@ -563,12 +572,35 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # alawys
-      # block
-      # ifelse
-      # case
-      # ?:
-      # delay
+      # stmt => ifelse / case / = / <= / delay # / expr{call, action}
+      # call
+
+      of psScopeStart:
+        let sk = toScopeKind ct.keyword
+        nodeStack.add VNode(kind: vnkScope, scope: sk)
+
+        switch:
+          if sk == skAlways: psScopeInput
+          else: psScopeBody
+
+        inc i
+
+      of psScopeInput:
+        follow psApplyInput
+        follow psExprStart
+
+      of psApplyInput:
+        let p = nodeStack.pop
+        nodestack.last.input = some p
+        switch psScopeBody
+
+      of psScopeBody:
+        matchVToken ct:
+        of kw"begin":
+          discard
+
+        else:
+          discard
 
       # ------------------------------------
 
