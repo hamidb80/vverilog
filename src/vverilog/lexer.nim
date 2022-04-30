@@ -270,11 +270,11 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
   # echo treeRepr result
   # echo repr result
 
-func matchSep*(t:VToken, sep: char): bool =
-  t.kind == vtkSeparator and t.sepKind == toSep sep
+# func matchSep*(t:VToken, sep: char): bool =
+#   t.kind == vtkSeparator and t.sepKind == toSep sep
 
-func matchOp*(t:VToken, op: string): bool =
-  t.kind == vtkOperator and t.operator == op
+# func matchOp*(t:VToken, op: string): bool =
+#   t.kind == vtkOperator and t.operator == op
 
 # test -----------------------------------------
 
