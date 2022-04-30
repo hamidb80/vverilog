@@ -711,7 +711,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             switch psInfixStart
 
         of w skColon: # `?:` inline ifelse operator
-          let ln = nodestack.last
+          let ln = nodestack[^2]
           if ln.kind == vnkInfix and ln.operator == "?":
             switch psTriplefixStart
           else:
