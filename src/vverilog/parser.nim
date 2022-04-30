@@ -120,6 +120,8 @@ type
     psBracketStart, psBracketBody
     psCurlyStart, psCurlyBody
 
+    psBracketExprFinalize
+
     psPrefixStart, psPrefixEnd
     psInfix
 
@@ -170,7 +172,13 @@ func toString(vn: VNode, depth: int = 0): string =
       vn.body.mapIt(it.toString).join(", ") & ')'
 
     of vnkBracketExpr:
-      toString(vn.lookup) & '[' & toString(vn.index) & ']'
+      let t =
+        if vn.index.kind == vnkRange:
+          toString vn.index
+        else:
+          '[' & toString(vn.index) & ']'
+
+      toString(vn.lookup) & t
 
     of vnkDeclare:
       let 
@@ -465,6 +473,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of kw, n:
           nodeStack.add toVNode ct
+          follow psExpr
           inc i
 
         of g vgcOpenBracket:
@@ -479,9 +488,18 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psExpr:
         matchVtoken ct:
-        else:
-          back
+        of g vgcOpenBracket:
+          let p = nodestack.pop
+          nodeStack.add VNode(kind: vnkBracketExpr, lookup: p)
+          follow psBracketExprFinalize
+          follow psExprStart
 
+        else: back
+
+      of psBracketExprFinalize:
+        let p = nodeStack.pop
+        nodestack.last.index = p
+        back
 
 
       of psPrefixStart:
