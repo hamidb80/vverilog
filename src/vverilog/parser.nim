@@ -249,7 +249,7 @@ func toString(vn: VNode, depth: int = 0): string =
           if issome vn.input:
             ' ' & toString(vn.input.get) & ' '
           else:
-            ""
+            " "
 
         body =
           if vn.body.len == 1:

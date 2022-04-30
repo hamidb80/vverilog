@@ -13,7 +13,8 @@ module stimulus(clk, number[7:0]);
 // assign b = $display("hey", 1);
 
 	// always @(clock or posedge reset)
-	always @(clock)
+	// always @(clock)
+	initial
 	begin
 		$display(1);
 		$display(2);
