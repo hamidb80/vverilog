@@ -23,20 +23,27 @@ assign b = $display("hey", 1);
 
 		// a = 2;
 
-		// if(load)
-		// 	count = data;
-
-		// else if(reset)
-		// 	count = 4'b0001;
-
-		// else begin
-		// 	if(mod)
-		// 		count = {count[2:0], count[3]};
-		// 	else
-		// 		count = {count[0], count[3:1]};
-		// end
 		#322 a = 2;
 		#400;
+
+		// if(before)
+		// 	a = 1;
+
+		// if(main)
+		// 	a = 2;
+
+		// else if(branch)
+		// 	a = 3;
+
+		// else begin
+		// 	if(nested)
+		// 		b = 4;
+		// 	else
+		// 		b = 5;
+		// end
+
+		// it(test) b = 4;
+		
 	end
 
 	// initial a = 2;

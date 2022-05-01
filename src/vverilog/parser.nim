@@ -45,6 +45,7 @@ type
 
   VerilogNode* = ref object
     body*: seq[VerilogNode]
+    inline*: bool
 
     case kind*: VerilogNodeKinds
     of vnkNumber:
@@ -106,7 +107,6 @@ type
 
     of vnkComment:
       comment*: string
-      inline*: bool
 
     of vnkEmpty:
       discard
@@ -257,19 +257,23 @@ func toString(vn: VNode, depth: int = 0): string =
           else:
             ""
 
+        spaceAfterType =
+          if needsSpace(vn.scope): " "
+          else: ""
+
         body =
-          if vn.body.len == 1:
+          if vn.inline:
+            toValidNodeStyleStr(vn.body[0], 0)
+
+          elif vn.body.len == 1:
             "\n" & toValidNodeStyleStr(vn.body[0], depth + 1)
+
           else:
             "begin\n" &
             vn.body.mapIt(toValidNodeStyleStr(it, depth+1)).join("\n") &
             '\n' & indent("end", depth * indentSize)
 
-        space = 
-          if needsSpace(vn.scope): " "
-          else: ""
-
-      $vn.scope & space & inp & body
+      $vn.scope & spaceAfterType & inp & body
 
     of vnkComment:
       if vn.inline:
@@ -333,7 +337,7 @@ func getAST(vn: VNode): VerilogAST =
 
   of vnkScope:
     #TODO input
-    let inp = 
+    let inp =
       if issome vn.input:
         $vn.input.get
       else:
@@ -754,7 +758,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             VNode(kind: vnkScope, scope: sk)
 
           of o "#":
-            VNode(kind: vnkScope, scope: skDelay)
+            VNode(kind: vnkScope, scope: skDelay, inline: true)
 
           else:
             err "what?"
