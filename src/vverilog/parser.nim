@@ -31,9 +31,8 @@ type
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
 
-    vnkCall
-
-    vnkDeclare, vnkDefine, vnkAssign, vnkInstanciate
+    vnkDeclare, vnkDefine, vnkAssign
+    vnkCall, vnkInstanciate
 
     vnkModule, vnkScope
     vnkCase, vnkOf, vnkElif
@@ -146,6 +145,9 @@ type
     psScopeStart, psApplyInput, psScopeInput, psScopeBodyStart, psAddToScope # always @ (...)
 
     psBlock, psBlockAdd
+    # TODO remove unused
+
+    psEqContainer, psEqOperatpr, psEqValue, psEqEnd
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -416,6 +418,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodestack.last.body.add p
         back
 
+      # ------------------------------------
 
       of psDeclareStart:
         nodeStack.add VNode(kind: vnkDeclare, dkind: toDeclareKind ct.keyword)
@@ -519,6 +522,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodestack.last.value = p
         back
 
+      # ------------------------------------
+
       of psParStart:
         matchVtoken ct:
         of g vgcOpenPar:
@@ -527,7 +532,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         else:
           err "invalid"
-
 
       of psParBody:
         matchVtoken ct:
@@ -553,6 +557,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         if not isTempNode p:
           nodeStack.last.body.add p
         back
+
 
       of psCurlyStart:
         matchVtoken ct:
@@ -626,8 +631,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO stmt => ifelse / case / = / instance / <= / delay # / expr{call, action}
+      # TODO stmt => ifelse / case / = / <= / delay #
       # TODO always args
+
+      # ------------------------------------
 
       of psInstanciateStart:
         nodestack.add VNode(kind: vnkInstanciate, module: toVNode ct)
@@ -653,6 +660,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         else:
           err "expected ; got: " & $ct
 
+      # ------------------------------------
 
       of psScopeStart:
         let sk = toScopeKind ct.keyword
@@ -763,6 +771,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodestack.last.index = p
         back
 
+      # ------------------------------------
 
       of psPrefixStart:
         nodeStack.add VNode(kind: vnkPrefix, operator: ct.operator)
@@ -775,6 +784,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodeStack.last.body.add p
         back
 
+
       of psInfixStart:
         let p = nodestack.pop
         nodeStack.add VNode(kind: vnkInfix, operator: ct.operator, body: @[p])
@@ -786,6 +796,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodeStack.pop
         nodeStack.last.body.add p
         back
+
 
       of psTriplefixStart:
         let p = nodestack.pop
@@ -800,6 +811,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodeStack.pop
         nodeStack.last.body.add p
         back
+
 
       else: err "this parser state is not implemented: " & $stateStack.last
 
