@@ -1,3 +1,4 @@
+
 // module stimulus(clk, number[7:0]);
 // module stimulus(clk, number);
 module stimulus();

@@ -1,10 +1,6 @@
 import vverilog/[parser]
 
-# for t in extractVTokens readFile "./samples/top.v":
-#   echo t
-
-
-let nodes = parseVerilog readFile "./samples/memory.v"
+let nodes = parseVerilog readFile "./eg.v"
 for n in nodes:
   echo "= = = = = = = = = = = = = = = = "
   echo n
