@@ -71,7 +71,7 @@ type
       ident*, value*: VerilogNode
 
     of vnkAssign:
-      container*, newValue*: VerilogNode
+      discard
 
     of vnkModule:
       name*: VerilogNode
@@ -119,7 +119,7 @@ type
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
     psDeclareIdentCheck, psDeclareAddIdent
 
-    psAssignStart, psAssignContainerSet, psAssignOperator, psAssignValueSet, psAssignEnd
+    psAssignStart, psAssignEnd
 
     psDefineStart, psDefineIdent, psDefineValue
 
@@ -142,7 +142,8 @@ type
     psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
 
-    psScopeStart, psApplyInput, psScopeInput, psScopeBodyStart, psAddToScope # always @ (...)
+    psScopeStart, psApplyInput, psScopeInput # always @ (...)
+    psScopeBodyStart, psAddSingleToScope, psAddToScope, psScopeEnd
 
     psBlock, psBlockAdd
     # TODO remove unused
@@ -214,7 +215,7 @@ func toString(vn: VNode, depth: int = 0): string =
       "`define " & toString(vn.ident) & ' ' & toString(vn.value)
 
     of vnkAssign:
-      "assign " & toString(vn.container) & " = " & toString(vn.newValue) & ';'
+      "assign " & toString(vn.body[0]) & ';'
 
     of vnkModule:
       "module " & toString(vn.name) &
@@ -276,6 +277,9 @@ func toString(vn: VNode, depth: int = 0): string =
 func `$`*(vn: VNode): string =
   toString vn
 
+func treeRepr*(vn: VNode, depth: int = 0): string =
+  discard
+
 
 func toVSymbol(name: string): VNode =
   VNode(kind: vnkSymbol, symbol: name)
@@ -296,6 +300,7 @@ func toVNode(token: VToken): VNode =
   else:
     err "this kind of converting is invalid"
 
+
 func toDeclareKind(s: string): VerilogDeclareKinds =
   case s:
   of "input": vdkInput
@@ -314,6 +319,7 @@ func toScopeKind(s: string): ScopeKinds =
 
 func isTempNode(node: VNode): bool =
   node.kind == vnkTemporary
+
 
 template genController(varname): untyped =
   template follow(v): untyped {.dirty.} =
@@ -466,34 +472,16 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psAssignStart:
         nodestack.add VNode(kind: vnkAssign)
-        switch psAssignContainerSet
+        switch psAssignEnd
         follow psExprStart
         inc i
-
-      of psAssignContainerSet:
-        let p = nodestack.pop
-        nodestack.last.container = p
-
-        switch psAssignOperator
-
-      of psAssignOperator:
-        matchVToken ct:
-        of o "=":
-          switch psAssignValueSet
-          follow psExprStart
-          inc i
-
-        else:
-          err "expected = got:" & $ct
-
-      of psAssignValueSet:
-        let p = nodestack.pop
-        nodestack.last.newValue = p
-        switch psAssignEnd
 
       of psAssignEnd:
         matchVToken ct:
         of w skSemiColon:
+          let p = nodeStack.pop
+          nodeStack.last.body.add p
+
           back
           inc i
 
@@ -687,7 +675,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           switch psAddToScope
 
         else:
-          err "what"
+          switch psScopeEnd
+          follow psAddSingleToScope
+          follow psExprStart
+
 
       of psAddToScope:
         matchVtoken ct:
@@ -706,6 +697,20 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         let p = nodestack.pop
         nodeStack.last.body.add p
         back
+
+      of psAddSingleToScope:
+        let p = nodeStack.pop
+        nodeStack.last.body.add p
+        back
+
+      of psScopeEnd:
+        matchVtoken ct:
+        of w skSemiColon:
+          back
+          inc i
+
+        else:
+          err "expected ; got: " & $ct
 
       # ------------------------------------
 
@@ -747,10 +752,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psParStart
 
         of o:
-          if ct.operator == "=":
-            back
-          else:
-            switch psInfixStart
+          switch psInfixStart
 
         of w skColon: # `?:` inline ifelse operator
           let ln = nodestack[^2]

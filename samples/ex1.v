@@ -12,12 +12,12 @@ module stimulus();
 // `define shiftright2 3'b001
 // assign memtemp_v1 = 1 ? 2 : 3;
 // assign memtemp_v1 = ~Write_Mem_q1 ? memory_v1[decodenum_s1] : 24'bz;
-// assign b = $display("hey", 1);
+assign b = $display("hey", 1);
 
 	// always @(clock or posedge reset)
 	// always @(clock)
-	// initial
-	// begin
+	initial
+	begin
 		// $display(1, $display(2));
 		// $display(3);
 
@@ -35,7 +35,9 @@ module stimulus();
 		// 	else
 		// 		count = {count[0], count[3:1]};
 		// end
-	// end
+	end
+
+	initial a = 2;
 
 	mdl m0();
 	mdl m1(1);
