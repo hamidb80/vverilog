@@ -202,7 +202,7 @@ func `$`*(k: ScopeKinds): string =
 const indentSize = 4
 
 func needsSemiColon(vn: VNode): bool =
-  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkStmtList, vnkElif, vnkElifBranch}
+  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkStmtList, vnkElif, vnkDefine, vnkElifBranch}
 
 template toValidNodeStyleStr(vn, depth): untyped =
   let t =
@@ -255,12 +255,12 @@ func toString(vn: VNode, depth: int = 0): string =
       "`define " & toString(vn.ident) & ' ' & toString(vn.value)
 
     of vnkAssign:
-      "assign " & toString(vn.children[0]) & ';'
+      "assign " & toString(vn.children[0])
 
     of vnkModule:
       "module " & toString(vn.name) &
       '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
-      vn.children[0].children.toString(depth+1) & 
+      vn.children[0].children.toString(depth+1) &
       "\nendmodule"
 
     of vnkPrefix:
