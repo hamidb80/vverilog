@@ -15,8 +15,6 @@ assign memtemp_v1 = 1 ? 2 : 3;
 assign memtemp_v1 = ~Write_Mem_q1 ? memory_v1[decodenum_s1] : 24'bz;
 assign b = $display("hey", 1);
 
-	// always @(clock or posedge reset)
-	// always @(clock)
 	initial
 	begin
 		$display(1, $display(2));
@@ -72,4 +70,9 @@ initial	case(a) endcase
 initial	#200;
 initial	if(hey) a = 2;
 
+always @(Phi1) begin end
+always @(posedge Phi1 or posedge ali) begin end
 endmodule
+
+module A1; endmodule
+module B2; endmodule

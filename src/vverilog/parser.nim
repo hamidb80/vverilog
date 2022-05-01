@@ -546,6 +546,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           let p = nodeStack.pop
           nodeStack.last.children.add p
           result.add nodeStack.pop
+          back
+          back
           inc i
 
         else: # instantiation
@@ -989,7 +991,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of g vgcOpenBracket:
           switch psBracketStart
 
-        of o:
+        of o, kw"posedge":
           switch:
             if matchOperator(ct, "#"): psScopeStart
             else: psPrefixStart
@@ -1018,7 +1020,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psApplyCallArgs
           follow psParStart
 
-        of o:
+        of o, kw"or":
           switch psInfixStart
 
         of w skColon: # `?:` inline ifelse operator
@@ -1043,7 +1045,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       # ------------------------------------
 
       of psPrefixStart:
-        nodeStack.add VNode(kind: vnkPrefix, operator: ct.operator)
+        nodeStack.add VNode(kind: vnkPrefix, operator: getStrVal ct)
         switch psPrefixEnd
         follow psExprStart
         inc i
@@ -1056,7 +1058,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psInfixStart:
         let p = nodestack.pop
-        nodeStack.add VNode(kind: vnkInfix, operator: ct.operator, children: @[p])
+        nodeStack.add VNode(kind: vnkInfix, operator: getStrVal ct, children: @[p])
         switch psInfixEnd
         follow psExprStart
         inc i

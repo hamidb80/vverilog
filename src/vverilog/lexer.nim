@@ -21,7 +21,7 @@ type
     vgcOpenPar, vgcClosePar
     vgcOpenBracket, vgcCloseBracket
     vgcOpenCurly, vgcCloseCurly
-
+  
   VerilogToken* = object # verilog token
     case kind*: VerilogTokenKinds
     of vtkKeyword:
@@ -225,6 +225,15 @@ func abbrToTkind(abbr: string): VerilogTokenKinds =
   of "n": vtkNumber
   of "c": vtkComment
   else: err "what? " & abbr
+
+
+func getStrval*(vt: VToken): string=
+  case vt.kind:
+  of vtkKeyword: vt.keyword
+  of vtkOperator: vt.operator
+  of vtkString: vt.content
+  of vtkNumber: vt.digits
+  else: err "not :::"
 
 
 macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
