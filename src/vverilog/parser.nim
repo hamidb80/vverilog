@@ -8,6 +8,7 @@ type
     vdkInOut
     vdkReg
     vdkWire
+    vdkInteger
 
   VerilogGroupKinds* = enum
     vskPar
@@ -190,6 +191,7 @@ func `$`*(k: VerilogDeclareKinds): string =
   of vdkInOut: "inout"
   of vdkReg: "reg"
   of vdkWire: "wire"
+  of vdkInteger: "integer"
 
 func `$`*(k: ScopeKinds): string =
   case k:
@@ -439,7 +441,8 @@ func toDeclareKind(s: string): VerilogDeclareKinds =
   of "inout": vdkInOut
   of "reg": vdkReg
   of "wire": vdkWire
-  else: err "invalid declare type"
+  of "integer": vdkInteger
+  else: err "invalid declaration type"
 
 func toScopeKind(s: string): ScopeKinds =
   case s:
@@ -533,7 +536,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         follow psModuleAddBody
 
         matchVtoken ct:
-        of kw"input", kw"output", kw"inout", kw"wire", kw"reg":
+        of kw"input", kw"output", kw"inout", kw"wire", kw"reg", kw"integer":
           follow psDeclareStart
 
         of kw"assign":
@@ -759,10 +762,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO always args
       # TODO always without arg
       # TODO add for
-      # TODO add integer type
 
       # ------------------------------------
 
