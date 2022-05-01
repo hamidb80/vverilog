@@ -26,6 +26,8 @@ type
     skInitial
 
   VerilogNodeKinds* = enum
+    vnkTemporary
+
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
 
@@ -105,6 +107,9 @@ type
     of vnkComment:
       comment*: string
       inline*: bool
+
+    of vnkTemporary:
+      discard
 
   VNode* = VerilogNode
 
@@ -260,6 +265,8 @@ func toString(vn: VNode, depth: int = 0): string =
       else:
         "/*" & vn.comment & "*/"
 
+    of vnkTemporary: "<TEMP>"
+
     else: err "to string conversation is not imlplmented: " & $vn.kind
 
   repeat(" ", depth * indentSize) & t
@@ -303,6 +310,8 @@ func toScopeKind(s: string): ScopeKinds =
   of "initial": skInitial
   else: err "invalid scope name"
 
+func isTempNode(node: VNode): bool =
+  node.kind == vnkTemporary
 
 template genController(varname): untyped =
   template follow(v): untyped {.dirty.} =
@@ -363,7 +372,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of g vgcOpenPar:
           follow psModuleApplyParams
           follow psParStart
-          debugecho "PAR START RFED((((((((((((((((((((((((((((((((("
 
         of w skSemiColon:
           switch psModuleBody
@@ -516,31 +524,35 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of g vgcOpenPar:
           nodeStack.add VNode(kind: vnkGroup, groupkind: vskPar)
           switch psParBody
-          inc i
 
         else:
           err "invalid"
 
-      # FIXME empty pars doesn't word
 
       of psParBody:
         matchVtoken ct:
-        of w skComma:
-          let p = nodeStack.pop
-          nodeStack.last.body.add p
-
+        of g vgcOpenPar:
+          # nodeStack.add Vnode(kind: vnkTemporary)
+          follow psParAdd
           follow psExprStart
-          inc i
+
+        of w skComma:
+          follow psParAdd
+          follow psExprStart
 
         of g vgcClosePar:
-          let p = nodeStack.pop
-          nodeStack.last.body.add p
-
           back
-          inc i
 
         else:
-          follow psExprStart
+          err "invalid syntax"
+
+        inc i
+
+      of psParAdd:
+        let p = nodeStack.pop
+        if not isTempNode p:
+          nodeStack.last.body.add p
+        back
 
       of psCurlyStart:
         matchVtoken ct:
@@ -553,6 +565,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           err "invalid"
 
       of psCurlyBody:
+
+
         matchVtoken ct:
         of w skComma:
           let p = nodeStack.pop
@@ -570,6 +584,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         else:
           follow psExprStart
+
 
       of psBracketStart:
         matchVtoken ct:
@@ -632,10 +647,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psInstanciateEnd:
         matchVtoken ct:
-        of w skSemiColon: 
+        of w skSemiColon:
           inc i
           back
-        else: 
+        else:
           err "expected ; got: " & $ct
 
 
@@ -706,6 +721,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           switch psPrefixStart
 
         else:
+          nodeStack.add VNode(kind: vnkTemporary)
           back
 
       of psExprBody:

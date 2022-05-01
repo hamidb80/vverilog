@@ -37,6 +37,7 @@ module stimulus();
 		// end
 	// end
 
-	// mdl m();
-	// mdl m1(.a(2), .b(3));
+	mdl m0();
+	mdl m1(1);
+	mdl m2(1, 2);
 endmodule
