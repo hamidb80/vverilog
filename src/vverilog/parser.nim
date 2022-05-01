@@ -44,7 +44,7 @@ type
     vnkBracketExpr
 
     vnkComment
-    vnkStmtList # TODO
+    vnkStmtList
 
   VerilogNode* {.acyclic.} = ref object
     children*: seq[VerilogNode]
@@ -159,6 +159,9 @@ type
     psScopeStart, psScopeApplyInput, psScopeInput
     psScopeBodyWrapper, psScopeBodyAdd
 
+    psForStart, psForParOpen, psForInit, psForCond
+    psForSteppsForParClose, psForAddBody # TODO
+
     psBlockStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
     # TODO remove unused
@@ -234,7 +237,7 @@ func toString(vn: VNode, depth: int = 0): string =
       let openClose =
         case vn.groupKind:
         of vskPar: ['(', ')']
-        of vskBracket: ['[', ']'] # TODO
+        of vskBracket: ['[', ']']
         of vskCurly: ['{', '}']
 
       openClose[0] & vn.children.mapIt(it.toString).join(", ") & openClose[1]
@@ -315,7 +318,6 @@ func toString(vn: VNode, depth: int = 0): string =
       '\n' & toString("endcase", depth)
 
     of vnkOf:
-      # TODO add stmtlist
       toString(vn.comparator) & ": " & toString(vn.children, depth)
 
     of vnkScope:
@@ -763,7 +765,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       # TODO always without arg
-      # TODO add for
 
       # ------------------------------------
 
@@ -977,6 +978,26 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           nodeStack.add VNode(kind: vnkElifBranch)
           switch psElIfBody
           follow psBlockStart
+
+      # ------------------------------------
+
+      of psForStart:
+        discard
+
+      of psForParOpen:
+        discard
+
+      of psForInit:
+        discard
+
+      of psForCond:
+        discard
+
+      of psForSteppsForParClose:
+        discard
+
+      of psForAddBody:
+        discard
 
       # ------------------------------------
 
