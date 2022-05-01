@@ -18,33 +18,39 @@ module stimulus();
 	// always @(clock)
 	initial
 	begin
-		$display(1, $display(2));
+		// $display(1, $display(2));
 		// $display(3);
 		// $dumpsvar;
 		// a = 2;
 
-		#322 a = 2;
+		// #322 a = 2;
 		// #400;
 
-	case (Mem_Pointer_s1)
-		ident: discard;
+	// case (Mem_Pointer_s1)
+	// 	ident: discard;
 		
-		1'bz:	begin
-			a = 2;
-			b = 3;
-		end
+	// 	1'bz:	begin
+	// 		a = 2;
+	// 		b = 3;
+	// 	end
 
-		default: $display("it's working!", 2);
-	endcase
+	// 	default: $display("it's working!", 2);
+	// endcase
+
+
 
 		// if(before)
 		// 	a = 1;
 
-		// if(main)
-		// 	a = 2;
+		if(main)
+			a = 2;
 
-		// else if(branch)
-		// 	a = 3;
+		else if(branch) begin
+			a = 3;
+			$dumpsvar;
+		end
+
+		else a = 4;
 
 		// else begin
 		// 	if(nested)
@@ -54,13 +60,9 @@ module stimulus();
 		// end
 
 		// it(test) b = 4;
-		
 	end
 
-	// TODO nested ifelse > case
-
 	// initial a = 2;
-
 
 	// mdl m0();
 	// mdl m1(1);

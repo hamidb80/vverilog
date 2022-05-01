@@ -37,7 +37,7 @@ type
 
     vnkModule, vnkScope
     vnkCase, vnkOf
-    vnkElif
+    vnkElif, vnkElifBranch
 
     vnkPrefix, vnkInfix, vnkTriplefix
     vnkBracketExpr
@@ -95,7 +95,10 @@ type
       comparator*: VerilogNode
 
     of vnkElif:
-      condition*: Option[VerilogNode]
+      discard
+
+    of vnkElifBranch:
+      discard
 
     of vnkPrefix, vnkInfix, vnkTriplefix:
       operator*: string
@@ -147,12 +150,13 @@ type
     psInstanciateStart, psInstanciateInstanceIdent
     psInstanciateArgs, psInstanciateEnd
 
-    psElIfCond, psElIfBody, psElseBody
+    psIfStart, psElIfBranch, psElifCond, psElIfBody, psElseBody
+
     psCaseStart, psCaseAddSelect, psCaseMatchExpr, psCaseMatchExprWrapper
     psCaseMatchSep, psCaseMatchBodyWrapper
 
     psScopeStart, psScopeApplyInput, psScopeInput # always @ (...)
-    psBlockBodyStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
+    psBlockStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
     # TODO remove unused
 
@@ -196,7 +200,7 @@ func `$`*(k: ScopeKinds): string =
 const indentSize = 4
 
 func needsSemiColon(vn: VNode): bool =
-  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkStmtList, vnkElif}
+  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkStmtList, vnkElif, vnkElifBranch}
 
 template toValidNodeStyleStr(vn, depth): untyped =
   let t =
@@ -275,7 +279,23 @@ func toString(vn: VNode, depth: int = 0): string =
       '(' & vn.children.mapIt(it.toString).join(", ") & ");"
 
     of vnkElif:
-      err "not implemented"
+      var acc: seq[string]
+
+      for i, br in vn.children:
+        let prefix =
+          if i == 0: indent("if", depth)
+          elif br.children.len == 1: indent("else ", depth)
+          else: indent("else if", depth)
+
+        acc.add prefix & toString(br, depth)
+      
+      acc.join '\n' & indent("", depth)
+
+    of vnkElifBranch:
+      if vn.children.len == 2:
+        toString(vn.children[0], depth) & ' ' & toString(vn.children[1], depth)
+      else:
+        toString(vn.children[0], depth)
 
     of vnkStmtList:
       if vn.children.len == 1:
@@ -316,7 +336,6 @@ func toString(vn: VNode, depth: int = 0): string =
 
 func toString(vns: seq[VNode], depth: int): string =
   vns.mapIt(toValidNodeStyleStr(it, depth)).join("\n")
-
 
 func `$`*(vn: VNode): string =
   toString vn
@@ -378,7 +397,10 @@ func getAST(vn: VNode): VerilogAST =
     ("Of", @[vn.comparator] & vn.children)
 
   of vnkElif:
-    err "discard"
+    ("ElIf", vn.children)
+
+  of vnkElifBranch:
+    ("ElIfBr", vn.children)
 
   of vnkStmtList:
     ("StmtList", vn.children)
@@ -778,7 +800,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         switch:
           case temp.scope:
           of skAlways, skDelay: psScopeInput
-          else: psBlockBodyStart
+          else: psBlockStart
 
         inc i
 
@@ -789,10 +811,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psScopeApplyInput:
         let p = nodeStack.pop
         nodestack.last.input = some p
-        switch psBlockBodyStart
+        switch psBlockStart
 
 
-      of psBlockBodyStart:
+      of psBlockStart:
         nodeStack.add VNode(kind: vnkStmtList)
 
         matchVToken ct:
@@ -870,7 +892,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of w skColon:
           switch psCaseMatchBodyWrapper
-          follow psBlockBodyStart
+          follow psBlockStart
           inc i
 
         else:
@@ -883,8 +905,54 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       # ------------------------------------
 
-      # of psif
+      of psIfStart:
+        nodeStack.add VNode(kind: vnkElif)
+        switch psElIfBranch
 
+      of psElIfBranch:
+        nodeStack.add VNode(kind: vnkElifBranch)
+
+        matchVtoken ct:
+        of kw"if":
+          switch psElifCond
+          follow psParStart
+        
+        of kw"else":
+          switch psElIfBody
+          follow psBlockStart
+          
+        else:
+          err "expected keyword if, got: " & $ct
+
+        inc i
+
+      of psElifCond:
+        let p = nodestack.pop
+        nodeStack.last.children.add p
+        switch psElIfBody
+        follow psBlockStart
+
+      of psElIfBody:
+        let p = nodestack.pop
+        nodeStack.last.children.add p
+
+        debugEcho "=================================\n\n\n\n", $p
+
+        matchVtoken ct:
+        of kw"else":
+          inc i
+          switch psElseBody
+        else:
+          back
+
+      of psElseBody:
+        matchVtoken ct:
+        of kw"if":
+          switch psElIfBranch
+        else:
+          nodeStack.add VNode(kind: vnkElifBranch)
+          switch psElIfBody
+          follow psBlockStart
 
       # ------------------------------------
 
@@ -892,6 +960,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of kw"case":
           switch psCaseStart
+
+        of kw"if":
+          switch psIfStart
 
         of g vgcOpenPar:
           switch psParStart
