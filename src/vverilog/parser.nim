@@ -479,10 +479,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       continue
 
     else:
-      # debugecho " - - - - - - - - - - - - - - - - - "
-      # debugecho ct
-      # debugecho "/ ", stateStack.join" / "
-      # debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+      debugecho " - - - - - - - - - - - - - - - - - "
+      debugecho ct
+      debugecho "/ ", stateStack.join" / "
+      debugecho "> ", nodeStack.mapIt(it.kind).join" > "
       discard
 
     ## every part must set the `i`(index) after his last match
@@ -980,7 +980,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           switch psIfStart
 
         of g vgcOpenPar:
-          switch psParStart
+          switch psExprBody
+          follow psParStart
 
         of g vgcOpenCurly:
           switch psCurlyStart
