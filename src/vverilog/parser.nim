@@ -1,4 +1,4 @@
-import std/[sequtils, options, strutils]
+import std/[sequtils, options, strutils, strformat]
 import ./lexer, ./conventions
 
 type
@@ -142,10 +142,9 @@ type
     psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
 
-    psScopeStart, psApplyInput, psScopeInput # always @ (...)
-    psScopeBodyStart, psAddSingleToScope, psAddToScope, psScopeEnd
+    psScopeStart, psScopeApplyInput, psScopeInput # always @ (...)
+    psBlockBodyStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
-    psBlock, psBlockAdd
     # TODO remove unused
 
     psEqContainer, psEqOperatpr, psEqValue, psEqEnd
@@ -277,9 +276,90 @@ func toString(vn: VNode, depth: int = 0): string =
 func `$`*(vn: VNode): string =
   toString vn
 
-func treeRepr*(vn: VNode, depth: int = 0): string =
-  discard
 
+type
+  VerilogAST = tuple
+    header: string
+    nodes: seq[VNode]
+
+func getAST(vn: VNode): VerilogAST =
+  case vn.kind:
+  of vnkDeclare:
+    let bs =
+      if issome vn.bus: @[vn.bus.get]
+      else: @[]
+
+    (fmt"Declare {vn.dkind}", bs & vn.idents)
+
+  of vnkDefine:
+    ("Define", @[vn.ident, vn.value])
+
+  of vnkAssign:
+    ("Assign", vn.body)
+
+  of vnkInstanciate:
+    (fmt"Instanciate", @[vn.module, vn.instanceIdent] & vn.body)
+
+  of vnkModule:
+    # TODO
+    (fmt"Module", vn.body)
+
+  of vnkTemporary: ("<TEMP>", @[])
+  of vnkNumber: (fmt"Number {vn.digits}", @[])
+  of vnkString: (fmt"String {vn}", @[])
+  of vnkSymbol: (fmt"Symbol {vn}", @[])
+
+  of vnkRange:
+    ("Range", @[vn.head, vn.tail])
+
+  of vnkBracketExpr:
+    ("BracketExpr", @[vn.lookup, vn.index])
+
+  of vnkCall:
+    ("Call", vn.body)
+
+  of vnkGroup:
+    (fmt"Group {vn.groupkind}", vn.body)
+
+  of vnkScope:
+    #TODO input
+    (fmt"Scope {vn.scope}", vn.body)
+
+  # of vnkCase:
+  #   discard
+
+  # of vnkOf:
+  #   discard
+
+  # of vnkElif:
+  #   discard
+
+  of vnkPrefix:
+    (fmt"Prefix {vn.operator}", vn.body)
+
+  of vnkInfix:
+    (fmt"Infix {vn.operator}", vn.body)
+
+  of vnkTriplefix:
+    (fmt"Triplefix {vn.operator}", vn.body)
+
+  # of vnkComment:
+  #   err "comment?"
+
+  else:
+    err "tree not implemented"
+
+
+func treeRepr(vast: VerilogAST, depth: int, result: var seq[string]) =
+  result.add indent(vast.header, depth * indentSize)
+
+  for n in vast.nodes:
+    treeRepr n.getAST, depth + 1, result
+
+func treeRepr*(vn: VNode): string =
+  var acc: seq[string]
+  treeRepr vn.getAST, 0, acc
+  acc.join "\n"
 
 func toVSymbol(name: string): VNode =
   VNode(kind: vnkSymbol, symbol: name)
@@ -656,31 +736,31 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         switch:
           if sk == skAlways: psScopeInput
-          else: psScopeBodyStart
+          else: psBlockBodyStart
 
         inc i
 
       of psScopeInput:
-        switch psApplyInput
+        switch psScopeApplyInput
         follow psExprStart
 
-      of psApplyInput:
+      of psScopeApplyInput:
         let p = nodeStack.pop
         nodestack.last.input = some p
-        switch psScopeBodyStart
+        switch psBlockBodyStart
 
-      of psScopeBodyStart:
+
+      of psBlockBodyStart:
         matchVToken ct:
         of kw"begin":
-          switch psAddToScope
+          switch psAddToBlockWrapper
 
         else:
-          switch psScopeEnd
-          follow psAddSingleToScope
+          switch psBlockEnd
+          follow psAddSingleStmt
           follow psExprStart
 
-
-      of psAddToScope:
+      of psAddToBlockWrapper:
         matchVtoken ct:
         of kw"end":
           back
@@ -690,20 +770,20 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           inc i
 
         else:
-          follow psBlockAdd
+          follow psAddToBlock
           follow psExprStart
 
-      of psBlockAdd:
+      of psAddToBlock:
         let p = nodestack.pop
         nodeStack.last.body.add p
         back
 
-      of psAddSingleToScope:
+      of psAddSingleStmt:
         let p = nodeStack.pop
         nodeStack.last.body.add p
         back
 
-      of psScopeEnd:
+      of psBlockEnd:
         matchVtoken ct:
         of w skSemiColon:
           back
