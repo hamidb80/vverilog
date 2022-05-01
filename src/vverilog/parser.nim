@@ -157,7 +157,7 @@ type
 
     psScopeStart, psScopeApplyInput, psScopeInput
     psScopeBodyWrapper, psScopeBodyAdd
-    
+
     psBlockStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
     # TODO remove unused
@@ -260,7 +260,7 @@ func toString(vn: VNode, depth: int = 0): string =
     of vnkModule:
       "module " & toString(vn.name) &
       '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
-      vn.children.mapIt(it.toString depth+1).join("\n") &
+      vn.children[0].children.toString(depth+1) & 
       "\nendmodule"
 
     of vnkPrefix:
@@ -463,15 +463,11 @@ template genController(varname): untyped =
     back
     follow(v)
 
-func parseVerilogImpl(tokens: seq[VToken],
-    nodeStackPrev: seq[VNode] = @[],
-    stateStackPrev: seq[ParserState] = @[psTopLevel]
-    ): seq[VNode] =
-
+func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
   var
     i = 0
-    nodeStack = nodeStackPrev
-    stateStack = stateStackPrev
+    nodeStack: seq[VNode]
+    stateStack: seq[ParserState] = @[psTopLevel]
 
   genController stateStack
 
@@ -817,7 +813,7 @@ func parseVerilogImpl(tokens: seq[VToken],
       of psScopeApplyInput:
         let p = nodeStack.pop
         nodestack.last.input = some p
-        
+
         switch psScopeBodyWrapper
 
       of psScopeBodyWrapper:
@@ -828,7 +824,7 @@ func parseVerilogImpl(tokens: seq[VToken],
         let p = nodestack.pop
         nodeStack.last.children.add p
         back
-      
+
 
       of psBlockStart:
         nodeStack.add VNode(kind: vnkStmtList)
@@ -1085,10 +1081,8 @@ func parseVerilogImpl(tokens: seq[VToken],
         back
 
 
-      else: err "this parser state is not implemented: " & $stateStack.last
-
-  debugecho "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~"
-  debugecho nodestack.mapIt it.kind
+  # debugecho "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~"
+  # debugecho nodestack.mapIt it.kind
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
