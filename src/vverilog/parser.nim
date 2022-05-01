@@ -479,10 +479,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       continue
 
     else:
-      debugecho " - - - - - - - - - - - - - - - - - "
-      debugecho ct
-      debugecho "/ ", stateStack.join" / "
-      debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+      # debugecho " - - - - - - - - - - - - - - - - - "
+      # debugecho ct
+      # debugecho "/ ", stateStack.join" / "
+      # debugecho "> ", nodeStack.mapIt(it.kind).join" > "
       discard
 
     ## every part must set the `i`(index) after his last match
@@ -493,6 +493,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           nodeStack.add VNode(kind: vnkModule)
           stateStack.add psModuldeIdent
           inc i
+
+        of kw"`define`", kw"`timescale":
+          err "not defened"
 
         else: err "not implemented: " & $ct
 
@@ -757,6 +760,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       # TODO always args
+      # TODO always without arg
+      # TODO add for
+      # TODO add integer type
 
       # ------------------------------------
 
@@ -986,7 +992,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psParStart
 
         of g vgcOpenCurly:
-          switch psCurlyStart
+          switch psExprBody
+          follow psCurlyStart
 
         of g vgcOpenBracket:
           switch psBracketStart
