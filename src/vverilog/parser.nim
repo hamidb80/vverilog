@@ -483,10 +483,10 @@ func parseVerilogImpl(tokens: seq[VToken],
       continue
 
     else:
-      debugecho " - - - - - - - - - - - - - - - - - "
-      debugecho ct
-      debugecho "/ ", stateStack.join" / "
-      debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+      # debugecho " - - - - - - - - - - - - - - - - - "
+      # debugecho ct
+      # debugecho "/ ", stateStack.join" / "
+      # debugecho "> ", nodeStack.mapIt(it.kind).join" > "
       discard
 
     ## every part must set the `i`(index) after his last match
@@ -826,10 +826,8 @@ func parseVerilogImpl(tokens: seq[VToken],
 
       of psScopeBodyAdd:
         let p = nodestack.pop
-        # err $p.kind
         nodeStack.last.children.add p
         back
-
       
 
       of psBlockStart:
@@ -868,12 +866,12 @@ func parseVerilogImpl(tokens: seq[VToken],
 
       of psBlockEnd:
         matchVtoken ct:
-        of w skSemiColon, kw"end":
+        of w skSemiColon, kw"end", kw"endcase":
           back
           inc i
 
         else:
-          err "expected ;/end got: " & $ct
+          back
 
       # ------------------------------------
 
@@ -893,6 +891,7 @@ func parseVerilogImpl(tokens: seq[VToken],
         of kw"endcase":
           back
           inc i
+
         else:
           nodeStack.add VNode(kind: vnkOf)
           switch psCaseMatchExprWrapper

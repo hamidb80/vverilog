@@ -16,8 +16,8 @@ module stimulus();
 
 	// always @(clock or posedge reset)
 	// always @(clock)
-	initial
-	begin
+	// initial
+	// begin
 		// $display(1, $display(2));
 		// $display(3);
 		// $dumpsvar;
@@ -37,28 +37,38 @@ module stimulus();
 	// 	default: $display("it's working!", 2);
 	// endcase
 
-		if(before)
-			a = 1;
+		// if(before)
+		// 	a = 1;
 
-		if(main)
-			a = 2;
+		// if(main)
+		// 	a = 2;
 
-		else if(branch) begin
-			a = 3;
-			$dumpsvar;
-		end
+		// else if(branch) begin
+		// 	a = 3;
+		// 	$dumpsvar;
+		// end
 
-		else begin
-			if(nested)
-				b = 4;
-			else
-				b = 5;
-		end
-	end
+		// else begin
+		// 	if(nested)
+		// 		b = 4;
+		// 	else
+		// 		b = 5;
+		// end
+	// end
 
 	// initial a = 2;
 
 	// mdl m0();
 	// mdl m1(1);
 	// mdl m2(1, 2);
+
+// initial begin
+// 	case(a)
+// 	endcase
+// end
+
+// initial	case(a) endcase
+// initial	#200;
+// initial	if(hey) a = 2;
+
 endmodule

@@ -4,7 +4,7 @@ import vverilog/[parser]
 #   echo t
 
 
-let nodes = parseVerilog readFile "./samples/ex1.v"
+let nodes = parseVerilog readFile "./samples/memory.v"
 for n in nodes:
   echo "= = = = = = = = = = = = = = = = "
   echo n
