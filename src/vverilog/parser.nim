@@ -27,7 +27,7 @@ type
     skDelay
 
   VerilogNodeKinds* = enum
-    vnkTemporary
+    vnkEmpty
 
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
@@ -108,7 +108,7 @@ type
       comment*: string
       inline*: bool
 
-    of vnkTemporary:
+    of vnkEmpty:
       discard
 
   VNode* = VerilogNode
@@ -164,7 +164,11 @@ func `$`*(k: ScopeKinds): string =
   of skAlways: "always"
   of skForever: "forever"
   of skInitial: "initial"
-  of skDelay: "Delay"
+  of skDelay: "#"
+
+func needsSpace(k: ScopeKinds): bool =
+  k != skDelay
+
 
 const indentSize = 4
 
@@ -249,9 +253,9 @@ func toString(vn: VNode, depth: int = 0): string =
       let
         inp =
           if issome vn.input:
-            ' ' & toString(vn.input.get) & ' '
+            toString(vn.input.get) & ' '
           else:
-            " "
+            ""
 
         body =
           if vn.body.len == 1:
@@ -261,7 +265,11 @@ func toString(vn: VNode, depth: int = 0): string =
             vn.body.mapIt(toValidNodeStyleStr(it, depth+1)).join("\n") &
             '\n' & indent("end", depth * indentSize)
 
-      $vn.scope & inp & body
+        space = 
+          if needsSpace(vn.scope): " "
+          else: ""
+
+      $vn.scope & space & inp & body
 
     of vnkComment:
       if vn.inline:
@@ -269,7 +277,7 @@ func toString(vn: VNode, depth: int = 0): string =
       else:
         "/*" & vn.comment & "*/"
 
-    of vnkTemporary: "<TEMP>"
+    of vnkEmpty: ""
 
     else: err "to string conversation is not imlplmented: " & $vn.kind
 
@@ -306,7 +314,7 @@ func getAST(vn: VNode): VerilogAST =
     # TODO
     (fmt"Module", vn.body)
 
-  of vnkTemporary: ("<TEMP>", @[])
+  of vnkEmpty: ("Empty", @[])
   of vnkNumber: (fmt"Number {vn.digits}", @[])
   of vnkString: (fmt"String {vn}", @[])
   of vnkSymbol: (fmt"Symbol {vn}", @[])
@@ -325,7 +333,13 @@ func getAST(vn: VNode): VerilogAST =
 
   of vnkScope:
     #TODO input
-    (fmt"Scope {vn.scope}", vn.body)
+    let inp = 
+      if issome vn.input:
+        $vn.input.get
+      else:
+        ""
+
+    (fmt"Scope {vn.scope} {inp}", vn.body)
 
   # of vnkCase:
   #   discard
@@ -399,8 +413,8 @@ func toScopeKind(s: string): ScopeKinds =
   of "initial": skInitial
   else: err "invalid scope name"
 
-func isTempNode(node: VNode): bool =
-  node.kind == vnkTemporary
+func isEmpty(node: VNode): bool =
+  node.kind == vnkEmpty
 
 
 template genController(varname): untyped =
@@ -606,7 +620,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psParBody:
         matchVtoken ct:
         of g vgcOpenPar:
-          # nodeStack.add Vnode(kind: vnkTemporary)
+          # nodeStack.add Vnode(kind: vnkEmpty)
           follow psParAdd
           follow psExprStart
 
@@ -624,7 +638,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psParAdd:
         let p = nodeStack.pop
-        if not isTempNode p:
+        if not isEmpty p:
           nodeStack.last.body.add p
         back
 
@@ -830,7 +844,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             else: psPrefixStart
 
         else:
-          nodeStack.add VNode(kind: vnkTemporary)
+          nodeStack.add VNode(kind: vnkEmpty)
           back
 
       of psExprBody:

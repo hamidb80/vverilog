@@ -36,6 +36,7 @@ assign b = $display("hey", 1);
 		// 		count = {count[0], count[3:1]};
 		// end
 		#322 a = 2;
+		#400;
 	end
 
 	// initial a = 2;
