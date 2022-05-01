@@ -36,7 +36,7 @@ type
     vnkCall, vnkInstanciate
 
     vnkModule, vnkScope
-    vnkCase, vnkCaseOf
+    vnkCase, vnkOf
     vnkElif
 
     vnkPrefix, vnkInfix, vnkTriplefix
@@ -46,7 +46,7 @@ type
     vnkStmtList # TODO
 
   VerilogNode* {.acyclic.} = ref object
-    body*: seq[VerilogNode]
+    children*: seq[VerilogNode]
     inline*: bool
 
     case kind*: VerilogNodeKinds
@@ -91,7 +91,7 @@ type
     of vnkCase:
       select*: VerilogNode
 
-    of vnkCaseOf:
+    of vnkOf:
       comparator*: VerilogNode
 
     of vnkElif:
@@ -112,7 +112,6 @@ type
 
     of vnkEmpty, vnkStmtList:
       discard
-
 
   VNode* = VerilogNode
 
@@ -193,14 +192,11 @@ func `$`*(k: ScopeKinds): string =
   of skInitial: "initial"
   of skDelay: "#"
 
-func needsSpace(k: ScopeKinds): bool =
-  k != skDelay
-
 
 const indentSize = 4
 
 func needsSemiColon(vn: VNode): bool =
-  vn.kind notin {vnkScope, vnkCase, vnkCaseOf, vnkElif}
+  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkStmtList, vnkElif}
 
 template toValidNodeStyleStr(vn, depth): untyped =
   let t =
@@ -209,13 +205,14 @@ template toValidNodeStyleStr(vn, depth): untyped =
 
   t.indent(depth * indentSize)
 
+
 func toString(s: string, depth: int): string =
   indent s, depth * indentSize
 
 func toString(vns: seq[VNode], depth: int): string
 
 func toString(vn: VNode, depth: int = 0): string =
-  let t = 
+  let t =
     case vn.kind:
 
     of vnkNumber: vn.digits
@@ -232,11 +229,11 @@ func toString(vn: VNode, depth: int = 0): string =
         of vskBracket: ['[', ']'] # TODO
         of vskCurly: ['{', '}']
 
-      openClose[0] & vn.body.mapIt(it.toString).join(", ") & openClose[1]
+      openClose[0] & vn.children.mapIt(it.toString).join(", ") & openClose[1]
 
     of vnkCall:
       toString(vn.caller) & '(' &
-      vn.body.mapIt(it.toString).join(", ") & ')'
+      vn.children.mapIt(it.toString).join(", ") & ')'
 
     of vnkBracketExpr:
       toString(vn.lookup) & '[' & toString(vn.index) & ']'
@@ -252,68 +249,60 @@ func toString(vn: VNode, depth: int = 0): string =
       "`define " & toString(vn.ident) & ' ' & toString(vn.value)
 
     of vnkAssign:
-      "assign " & toString(vn.body[0]) & ';'
+      "assign " & toString(vn.children[0]) & ';'
 
     of vnkModule:
       "module " & toString(vn.name) &
       '(' & vn.params.mapIt(it.toString).join(", ") & ");\n" &
-      vn.body.mapIt(it.toString depth+1).join("\n") &
+      vn.children.mapIt(it.toString depth+1).join("\n") &
       "\nendmodule"
 
     of vnkPrefix:
-      vn.operator & toString(vn.body[0])
+      vn.operator & toString(vn.children[0])
 
     of vnkInfix:
-      toString(vn.body[0]) & ' ' &
+      toString(vn.children[0]) & ' ' &
       vn.operator & ' ' &
-      toString(vn.body[1])
+      toString(vn.children[1])
 
     of vnkTriplefix:
-      toString(vn.body[0]) & ' ' &
+      toString(vn.children[0]) & ' ' &
       vn.operator & ' ' &
-      toString(vn.body[1])
+      toString(vn.children[1])
 
     of vnkInstanciate:
       toString(vn.module) & ' ' & toString(vn.instanceIdent) &
-      '(' & vn.body.mapIt(it.toString).join(", ") & ");"
+      '(' & vn.children.mapIt(it.toString).join(", ") & ");"
 
-    of vnkElif, vnkStmtList:
+    of vnkElif:
       err "not implemented"
+
+    of vnkStmtList:
+      if vn.children.len == 1:
+        toValidNodeStyleStr(vn.children[0], 0)
+
+      else:
+        "begin\n" & vn.children.toString(depth+1) &
+        '\n' & toString("end", depth)
 
     of vnkCase:
       toString("case", depth) & ' ' & toString(vn.select) & '\n' &
-      vn.body.toString(depth+1) &
+      vn.children.toString(depth+1) &
       '\n' & toString("endcase", depth)
 
-    of vnkCaseOf:
+    of vnkOf:
       # TODO add stmtlist
-      toString(vn.comparator) & ": \n" & toString(vn.body, depth + 1)
+      toString(vn.comparator) & ": " & toString(vn.children, depth)
 
     of vnkScope:
       let
         inp =
           if issome vn.input:
-            toString(vn.input.get) & ' '
+            toString(vn.input.get)
           else:
             ""
 
-        spaceAfterType =
-          if needsSpace(vn.scope): " "
-          else: ""
-
-        body =
-          if vn.inline:
-            toValidNodeStyleStr(vn.body[0], 0)
-
-          elif vn.body.len == 1:
-            "\n" & toValidNodeStyleStr(vn.body[0], depth + 1)
-
-          else:
-            "begin\n" &
-            vn.body.mapIt(toValidNodeStyleStr(it, depth+1)).join("\n") &
-            '\n' & indent("end", depth * indentSize)
-
-      $vn.scope & spaceAfterType & inp & body
+      $vn.scope & inp & ' ' & toString(vn.children[0], depth)
 
     of vnkComment:
       if vn.inline:
@@ -326,7 +315,7 @@ func toString(vn: VNode, depth: int = 0): string =
   indent t, depth * indentSize
 
 func toString(vns: seq[VNode], depth: int): string =
-  vns.mapIt(toString(it, depth)).join("\n")
+  vns.mapIt(toValidNodeStyleStr(it, depth)).join("\n")
 
 
 func `$`*(vn: VNode): string =
@@ -346,14 +335,14 @@ func getAST(vn: VNode): VerilogAST =
     ("Define", @[vn.ident, vn.value])
 
   of vnkAssign:
-    ("Assign", vn.body)
+    ("Assign", vn.children)
 
   of vnkInstanciate:
-    (fmt"Instanciate", @[vn.module, vn.instanceIdent] & vn.body)
+    (fmt"Instanciate", @[vn.module, vn.instanceIdent] & vn.children)
 
   of vnkModule:
     # TODO
-    (fmt"Module", vn.body)
+    (fmt"Module", vn.children)
 
   of vnkEmpty: ("Empty", @[])
   of vnkNumber: (fmt"Number {vn.digits}", @[])
@@ -367,10 +356,10 @@ func getAST(vn: VNode): VerilogAST =
     ("BracketExpr", @[vn.lookup, vn.index])
 
   of vnkCall:
-    ("Call", @[vn.caller] & vn.body)
+    ("Call", @[vn.caller] & vn.children)
 
   of vnkGroup:
-    (fmt"Group {vn.groupkind}", vn.body)
+    (fmt"Group {vn.groupkind}", vn.children)
 
   of vnkScope:
     #TODO input
@@ -380,31 +369,31 @@ func getAST(vn: VNode): VerilogAST =
       else:
         ""
 
-    (fmt"Scope {vn.scope} {inp}", vn.body)
+    (fmt"Scope {vn.scope} {inp}", vn.children)
 
   of vnkCase:
-    ("Case", @[vn.select] & vn.body)
+    ("Case", @[vn.select] & vn.children)
 
-  of vnkCaseOf:
-    ("CaseOf", @[vn.comparator] & vn.body)
+  of vnkOf:
+    ("Of", @[vn.comparator] & vn.children)
 
-  # of vnkElif:
-  #   discard
+  of vnkElif:
+    err "discard"
+
+  of vnkStmtList:
+    ("StmtList", vn.children)
 
   of vnkPrefix:
-    (fmt"Prefix {vn.operator}", vn.body)
+    (fmt"Prefix {vn.operator}", vn.children)
 
   of vnkInfix:
-    (fmt"Infix {vn.operator}", vn.body)
+    (fmt"Infix {vn.operator}", vn.children)
 
   of vnkTriplefix:
-    (fmt"Triplefix {vn.operator}", vn.body)
+    (fmt"Triplefix {vn.operator}", vn.children)
 
   of vnkComment:
     (fmt"Comment inline?: {vn.inline}", @[toVString vn.comment])
-
-  else:
-    err "tree not implemented"
 
 
 func treeRepr(vast: VerilogAST, depth: int, result: var seq[string]) =
@@ -501,6 +490,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psParStart
 
         of w skSemiColon:
+          nodeStack.add VNode(kind: vnkStmtList)
           switch psModuleBody
           inc i
 
@@ -509,7 +499,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psModuleApplyParams:
         let p = nodestack.pop
-        nodestack.last.params = p.body
+        nodestack.last.params = p.children
         back
 
       of psModuleBody:
@@ -529,6 +519,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           follow psScopeStart
 
         of kw"endmodule":
+          let p = nodeStack.pop
+          nodeStack.last.children.add p
           result.add nodeStack.pop
           inc i
 
@@ -540,7 +532,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psModuleAddBody:
         let p = nodeStack.pop
-        nodestack.last.body.add p
+        nodestack.last.children.add p
         back
 
       # ------------------------------------
@@ -599,7 +591,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVToken ct:
         of w skSemiColon:
           let p = nodeStack.pop
-          nodeStack.last.body.add p
+          nodeStack.last.children.add p
 
           back
           inc i
@@ -662,7 +654,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psParAdd:
         let p = nodeStack.pop
         if not isEmpty p:
-          nodeStack.last.body.add p
+          nodeStack.last.children.add p
         back
 
 
@@ -682,14 +674,14 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of w skComma:
           let p = nodeStack.pop
-          nodeStack.last.body.add p
+          nodeStack.last.children.add p
 
           follow psExprStart
           inc i
 
         of g vgcCloseCurly:
           let p = nodeStack.pop
-          nodeStack.last.body.add p
+          nodeStack.last.children.add p
 
           back
           inc i
@@ -738,7 +730,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO stmt => ifelse
       # TODO always args
 
       # ------------------------------------
@@ -756,7 +747,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psInstanciateArgs:
         let p = nodeStack.pop
-        nodeStack.last.body = p.body
+        nodeStack.last.children = p.children
         switch psInstanciateEnd
 
       of psInstanciateEnd:
@@ -802,6 +793,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
 
       of psBlockBodyStart:
+        nodeStack.add VNode(kind: vnkStmtList)
+
         matchVToken ct:
         of kw"begin":
           switch psAddToBlockWrapper
@@ -814,8 +807,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psAddToBlockWrapper:
         matchVtoken ct:
         of kw"end":
-          back
-          inc i
+          switch psBlockEnd
 
         of w skSemiColon, kw"begin":
           inc i
@@ -826,17 +818,20 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psAddToBlock:
         let p = nodestack.pop
-        nodeStack.last.body.add p
+        nodeStack.last.children.add p
         back
 
       of psAddSingleStmt:
         let p = nodeStack.pop
-        nodeStack.last.body.add p
+        nodeStack.last.children.add p
         back
 
       of psBlockEnd:
         matchVtoken ct:
-        of w skSemiColon:
+        of w skSemiColon, kw"end":
+          let p = nodeStack.pop
+          nodeStack.last.children.add p
+
           back
           inc i
 
@@ -862,7 +857,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           back
           inc i
         else:
-          nodeStack.add VNode(kind: vnkCaseOf)
+          nodeStack.add VNode(kind: vnkOf)
           switch psCaseMatchExprWrapper
           follow psExprStart
 
@@ -883,8 +878,13 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psCaseMatchBodyWrapper:
         let p = nodestack.pop
-        nodestack.last.body.add p
+        nodestack.last.children.add p
         switch psCaseMatchExpr
+
+      # ------------------------------------
+
+      # of psif
+
 
       # ------------------------------------
 
@@ -945,7 +945,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psApplyCallArgs:
         let p = nodestack.pop
-        nodestack.last.body = p.body
+        nodestack.last.children = p.children
         back
 
       of psBracketExprFinalize:
@@ -963,27 +963,27 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psPrefixEnd:
         let p = nodeStack.pop
-        nodeStack.last.body.add p
+        nodeStack.last.children.add p
         back
 
 
       of psInfixStart:
         let p = nodestack.pop
-        nodeStack.add VNode(kind: vnkInfix, operator: ct.operator, body: @[p])
+        nodeStack.add VNode(kind: vnkInfix, operator: ct.operator, children: @[p])
         switch psInfixEnd
         follow psExprStart
         inc i
 
       of psInfixEnd:
         let p = nodeStack.pop
-        nodeStack.last.body.add p
+        nodeStack.last.children.add p
         back
 
 
       of psTriplefixStart:
         let p = nodestack.pop
         nodeStack.add VNode(kind: vnkTriplefix,
-            operator: $fromSep(ct.sepKind), body: @[p])
+            operator: $fromSep(ct.sepKind), children: @[p])
 
         switch psTriplefixEnd
         follow psExprStart
@@ -991,7 +991,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       of psTriplefixEnd:
         let p = nodeStack.pop
-        nodeStack.last.body.add p
+        nodeStack.last.children.add p
         back
 
 

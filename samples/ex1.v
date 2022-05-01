@@ -30,10 +30,11 @@ module stimulus();
 		ident: discard;
 		
 		1'bz:	begin
-			discard;
+			a = 2;
+			b = 3;
 		end
 
-		// default: $display("it's working!", 2);
+		default: $display("it's working!", 2);
 	endcase
 
 		// if(before)
