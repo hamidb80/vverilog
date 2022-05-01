@@ -77,6 +77,9 @@ func fromSep*(s: SeparatorKinds): char =
   of skSemiColon: ';'
   of skComma: ','
 
+func matchOperator*(vt:VToken, op: string): bool=
+  vt.kind == vtkOperator and vt.operator == op
+
 func toGroupChar(ch: char): VerilogGroupChar =
   case ch:
   of '(': vgcOpenPar
@@ -284,11 +287,12 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
 # test -----------------------------------------
 
 # let t = VToken(kind: vtkString, content: "hey")
-# matchVtoken t:
-# of w '1': discard
-# of kw"1", kw"2": discard
-# of n: discard
-# else: discard
+
+# let acc = block:
+#   matchVtoken t:
+#   of kw"1", kw"2": 1
+#   of n: 2
+#   else: err "what"
 
 # dumptree:
 #   case 1:

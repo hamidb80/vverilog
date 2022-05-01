@@ -24,6 +24,7 @@ type
     skAlways
     skForever
     skInitial
+    skDelay
 
   VerilogNodeKinds* = enum
     vnkTemporary
@@ -163,6 +164,7 @@ func `$`*(k: ScopeKinds): string =
   of skAlways: "always"
   of skForever: "forever"
   of skInitial: "initial"
+  of skDelay: "Delay"
 
 const indentSize = 4
 
@@ -699,7 +701,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO stmt => ifelse / case / = / <= / delay #
+      # TODO stmt => ifelse / case
       # TODO always args
 
       # ------------------------------------
@@ -731,11 +733,23 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       # ------------------------------------
 
       of psScopeStart:
-        let sk = toScopeKind ct.keyword
-        nodeStack.add VNode(kind: vnkScope, scope: sk)
+        let temp = block:
+          matchVtoken ct:
+          of kw:
+            let sk = toScopeKind ct.keyword
+            VNode(kind: vnkScope, scope: sk)
+
+          of o "#":
+            VNode(kind: vnkScope, scope: skDelay)
+
+          else:
+            err "what?"
+
+        nodeStack.add temp
 
         switch:
-          if sk == skAlways: psScopeInput
+          case temp.scope:
+          of skAlways, skDelay: psScopeInput
           else: psBlockBodyStart
 
         inc i
@@ -811,7 +825,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           switch psBracketStart
 
         of o:
-          switch psPrefixStart
+          switch:
+            if matchOperator(ct, "#"): psScopeStart
+            else: psPrefixStart
 
         else:
           nodeStack.add VNode(kind: vnkTemporary)

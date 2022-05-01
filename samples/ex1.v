@@ -35,11 +35,13 @@ assign b = $display("hey", 1);
 		// 	else
 		// 		count = {count[0], count[3:1]};
 		// end
+		#322 a = 2;
 	end
 
-	initial a = 2;
+	// initial a = 2;
 
-	mdl m0();
-	mdl m1(1);
-	mdl m2(1, 2);
+
+	// mdl m0();
+	// mdl m1(1);
+	// mdl m2(1, 2);
 endmodule

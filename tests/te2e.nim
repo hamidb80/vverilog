@@ -1,6 +1,4 @@
-import std/[sequtils]
-import vverilog/[parser, lexer]
-
+import vverilog/[parser]
 
 # for t in extractVTokens readFile "./samples/top.v":
 #   echo t
@@ -12,4 +10,3 @@ for n in nodes:
   echo n
   echo "# # # # # # # # # # # # # # # # "
   echo treeRepr n
-# echo nodes
