@@ -1,5 +1,6 @@
-module stimulus(clk, number[7:0]);
+// module stimulus(clk, number[7:0]);
 // module stimulus(clk, number);
+module stimulus();
 // module stimulus;
 
 // input clk;
@@ -15,11 +16,12 @@ module stimulus(clk, number[7:0]);
 
 	// always @(clock or posedge reset)
 	// always @(clock)
-	initial
-	begin
-		$display(1);
-		$display(2);
-	// 	$display(3);
+	// initial
+	// begin
+		// $display(1, $display(2));
+		// $display(3);
+
+		// a = 2;
 
 		// if(load)
 		// 	count = data;
@@ -33,6 +35,8 @@ module stimulus(clk, number[7:0]);
 		// 	else
 		// 		count = {count[0], count[3:1]};
 		// end
-	end
+	// end
 
+	// mdl m();
+	// mdl m1(.a(2), .b(3));
 endmodule

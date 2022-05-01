@@ -30,9 +30,8 @@ type
     vnkSymbol, vnkGroup
 
     vnkCall
-    vnkAction # dumpvars;
 
-    vnkDeclare, vnkDefine, vnkAssign, vnkInstantiate
+    vnkDeclare, vnkDefine, vnkAssign, vnkInstanciate
 
     vnkModule, vnkScope
     vnkCase, vnkOf, vnkElif
@@ -62,9 +61,6 @@ type
     of vnkCall:
       caller*: VerilogNode
 
-    of vnkAction:
-      action*: VerilogNode
-
     of vnkDeclare:
       dkind*: VerilogDeclareKinds
       bus*: Option[VerilogNode]
@@ -84,8 +80,8 @@ type
       scope*: ScopeKinds
       input*: Option[VerilogNode]
 
-    of vnkInstantiate:
-      module*, instance*: VerilogNode
+    of vnkInstanciate:
+      module*, instanceIdent*: VerilogNode
 
     of vnkCase:
       select*: VerilogNode
@@ -136,7 +132,8 @@ type
     psExprStart, psExprBody
     psApplyCallArgs
 
-    psInstanceName, psInstanceArgs
+    psInstanciateStart, psInstanciateInstanceIdent
+    psInstanciateArgs, psInstanciateEnd
 
     psElIfCond, psElIfBody, psElseBody
     psCaseParam, psCaseOfParam, psCaseOfBody
@@ -179,9 +176,6 @@ func toString(vn: VNode, depth: int = 0): string =
     of vnkNumber: vn.digits
     of vnkString: '"' & vn.str & '"'
     of vnkSymbol: vn.symbol
-
-    of vnkAction:
-      toString(vn.action, depth+1) & ";\n"
 
     of vnkRange:
       toString(vn.head) & ':' & toString(vn.tail)
@@ -234,8 +228,8 @@ func toString(vn: VNode, depth: int = 0): string =
       vn.operator & ' ' &
       toString(vn.body[1])
 
-    of vnkInstantiate:
-      toString(vn.module) & ' ' & toString(vn.instance) &
+    of vnkInstanciate:
+      toString(vn.module) & ' ' & toString(vn.instanceIdent) &
       '(' & vn.body.mapIt(it.toString).join(", ") & ");"
 
     # of vnkElif:
@@ -403,8 +397,11 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           result.add nodeStack.pop
           inc i
 
-        else:
-          err "ERR: " & $ct
+        else: # instantiation
+          if ct.kind == vtkKeyword:
+            follow psInstanciateStart
+          else:
+            err "expected module name, got: " & $ct
 
       of psModuleAddBody:
         let p = nodeStack.pop
@@ -524,6 +521,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         else:
           err "invalid"
 
+      # FIXME empty pars doesn't word
+
       of psParBody:
         matchVtoken ct:
         of w skComma:
@@ -613,6 +612,32 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         inc i
 
       # TODO stmt => ifelse / case / = / instance / <= / delay # / expr{call, action}
+      # TODO always args
+
+      of psInstanciateStart:
+        nodestack.add VNode(kind: vnkInstanciate, module: toVNode ct)
+        switch psInstanciateInstanceIdent
+        inc i
+
+      of psInstanciateInstanceIdent:
+        nodeStack.last.instanceIdent = toVNode ct
+        switch psInstanciateArgs
+        follow psParStart
+        inc i
+
+      of psInstanciateArgs:
+        let p = nodeStack.pop
+        nodeStack.last.body = p.body
+        switch psInstanciateEnd
+
+      of psInstanciateEnd:
+        matchVtoken ct:
+        of w skSemiColon: 
+          inc i
+          back
+        else: 
+          err "expected ; got: " & $ct
+
 
       of psScopeStart:
         let sk = toScopeKind ct.keyword
