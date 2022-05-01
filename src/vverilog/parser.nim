@@ -155,7 +155,9 @@ type
     psCaseStart, psCaseAddSelect, psCaseMatchExpr, psCaseMatchExprWrapper
     psCaseMatchSep, psCaseMatchBodyWrapper
 
-    psScopeStart, psScopeApplyInput, psScopeInput # always @ (...)
+    psScopeStart, psScopeApplyInput, psScopeInput
+    psScopeBodyWrapper, psScopeBodyAdd
+    
     psBlockStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
     # TODO remove unused
@@ -247,7 +249,7 @@ func toString(vn: VNode, depth: int = 0): string =
         if issome vn.bus: '[' & toString(vn.bus.get) & "] "
           else: ""
 
-      $vn.dkind & ' ' & b & vn.idents.mapIt(toString it).join(", ") & ';'
+      $vn.dkind & ' ' & b & vn.idents.mapIt(toString it).join(", ")
 
     of vnkDefine:
       "`define " & toString(vn.ident) & ' ' & toString(vn.value)
@@ -276,7 +278,7 @@ func toString(vn: VNode, depth: int = 0): string =
 
     of vnkInstanciate:
       toString(vn.module) & ' ' & toString(vn.instanceIdent) &
-      '(' & vn.children.mapIt(it.toString).join(", ") & ");"
+      '(' & vn.children.mapIt(it.toString).join(", ") & ")"
 
     of vnkElif:
       var acc: seq[string]
@@ -288,7 +290,7 @@ func toString(vn: VNode, depth: int = 0): string =
           else: indent("else if", depth)
 
         acc.add prefix & toString(br, depth)
-      
+
       acc.join '\n' & indent("", depth)
 
     of vnkElifBranch:
@@ -298,7 +300,7 @@ func toString(vn: VNode, depth: int = 0): string =
         toString(vn.children[0], depth)
 
     of vnkStmtList:
-      if vn.children.len == 1:
+      if vn.children.len == 1 and vn.children[0].kind != vnkElif:
         toValidNodeStyleStr(vn.children[0], 0)
 
       else:
@@ -360,8 +362,7 @@ func getAST(vn: VNode): VerilogAST =
     (fmt"Instanciate", @[vn.module, vn.instanceIdent] & vn.children)
 
   of vnkModule:
-    # TODO
-    (fmt"Module", vn.children)
+    (fmt"Module", @[vn.name] & vn.params & vn.children)
 
   of vnkEmpty: ("Empty", @[])
   of vnkNumber: (fmt"Number {vn.digits}", @[])
@@ -462,11 +463,15 @@ template genController(varname): untyped =
     back
     follow(v)
 
-func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
+func parseVerilogImpl(tokens: seq[VToken],
+    nodeStackPrev: seq[VNode] = @[],
+    stateStackPrev: seq[ParserState] = @[psTopLevel]
+    ): seq[VNode] =
+
   var
     i = 0
-    nodeStack: seq[VNode]
-    stateStack: seq[ParserState] = @[psTopLevel]
+    nodeStack = nodeStackPrev
+    stateStack = stateStackPrev
 
   genController stateStack
 
@@ -482,6 +487,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       debugecho ct
       debugecho "/ ", stateStack.join" / "
       debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+      discard
 
     ## every part must set the `i`(index) after his last match
     case stateStack.last:
@@ -800,7 +806,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         switch:
           case temp.scope:
           of skAlways, skDelay: psScopeInput
-          else: psBlockStart
+          else: psScopeBodyWrapper
 
         inc i
 
@@ -811,8 +817,20 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psScopeApplyInput:
         let p = nodeStack.pop
         nodestack.last.input = some p
-        switch psBlockStart
+        
+        switch psScopeBodyWrapper
 
+      of psScopeBodyWrapper:
+        switch psScopeBodyAdd
+        follow psBlockStart
+
+      of psScopeBodyAdd:
+        let p = nodestack.pop
+        # err $p.kind
+        nodeStack.last.children.add p
+        back
+
+      
 
       of psBlockStart:
         nodeStack.add VNode(kind: vnkStmtList)
@@ -851,14 +869,11 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psBlockEnd:
         matchVtoken ct:
         of w skSemiColon, kw"end":
-          let p = nodeStack.pop
-          nodeStack.last.children.add p
-
           back
           inc i
 
         else:
-          err "expected ; got: " & $ct
+          err "expected ;/end got: " & $ct
 
       # ------------------------------------
 
@@ -899,8 +914,12 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           err "expected : got: " & $ct
 
       of psCaseMatchBodyWrapper:
-        let p = nodestack.pop
-        nodestack.last.children.add p
+        let stmt = nodestack.pop
+        nodestack.last.children.add stmt
+
+        let cOf = nodestack.pop
+        nodestack.last.children.add cOf
+
         switch psCaseMatchExpr
 
       # ------------------------------------
@@ -916,11 +935,11 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of kw"if":
           switch psElifCond
           follow psParStart
-        
+
         of kw"else":
           switch psElIfBody
           follow psBlockStart
-          
+
         else:
           err "expected keyword if, got: " & $ct
 
@@ -933,10 +952,11 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         follow psBlockStart
 
       of psElIfBody:
-        let p = nodestack.pop
-        nodeStack.last.children.add p
+        let stmt = nodestack.pop
+        nodeStack.last.children.add stmt
 
-        debugEcho "=================================\n\n\n\n", $p
+        let br = nodestack.pop
+        nodeStack.last.children.add br
 
         matchVtoken ct:
         of kw"else":

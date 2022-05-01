@@ -37,10 +37,8 @@ module stimulus();
 	// 	default: $display("it's working!", 2);
 	// endcase
 
-
-
-		// if(before)
-		// 	a = 1;
+		if(before)
+			a = 1;
 
 		if(main)
 			a = 2;
@@ -50,16 +48,12 @@ module stimulus();
 			$dumpsvar;
 		end
 
-		else a = 4;
-
-		// else begin
-		// 	if(nested)
-		// 		b = 4;
-		// 	else
-		// 		b = 5;
-		// end
-
-		// it(test) b = 4;
+		else begin
+			if(nested)
+				b = 4;
+			else
+				b = 5;
+		end
 	end
 
 	// initial a = 2;
