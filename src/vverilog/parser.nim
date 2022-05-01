@@ -36,14 +36,16 @@ type
     vnkCall, vnkInstanciate
 
     vnkModule, vnkScope
-    vnkCase, vnkOf, vnkElif
+    vnkCase, vnkCaseOf
+    vnkElif
 
     vnkPrefix, vnkInfix, vnkTriplefix
     vnkBracketExpr
 
     vnkComment
+    vnkStmtList # TODO
 
-  VerilogNode* = ref object
+  VerilogNode* {.acyclic.} = ref object
     body*: seq[VerilogNode]
     inline*: bool
 
@@ -89,8 +91,8 @@ type
     of vnkCase:
       select*: VerilogNode
 
-    of vnkOf:
-      comparator*: Option[VerilogNode]
+    of vnkCaseOf:
+      comparator*: VerilogNode
 
     of vnkElif:
       condition*: Option[VerilogNode]
@@ -108,10 +110,16 @@ type
     of vnkComment:
       comment*: string
 
-    of vnkEmpty:
+    of vnkEmpty, vnkStmtList:
       discard
 
+
   VNode* = VerilogNode
+
+  VerilogAST* = tuple
+    header: string
+    nodes: seq[VNode]
+
 
   ParserState = enum
     psTopLevel
@@ -141,14 +149,33 @@ type
     psInstanciateArgs, psInstanciateEnd
 
     psElIfCond, psElIfBody, psElseBody
-    psCaseParam, psCaseOfParam, psCaseOfBody
+    psCaseStart, psCaseAddSelect, psCaseMatchExpr, psCaseMatchExprWrapper
+    psCaseMatchSep, psCaseMatchBodyWrapper
 
     psScopeStart, psScopeApplyInput, psScopeInput # always @ (...)
     psBlockBodyStart, psAddSingleStmt, psAddToBlockWrapper, psAddToBlock, psBlockEnd
 
     # TODO remove unused
 
-    psEqContainer, psEqOperatpr, psEqValue, psEqEnd
+
+func toVSymbol(name: string): VNode =
+  VNode(kind: vnkSymbol, symbol: name)
+
+func toVNumber(digits: string): VNode =
+  VNode(kind: vnkNumber, digits: digits)
+
+func toVString(s: string): VNode =
+  VNode(kind: vnkString, str: s)
+
+func toVNode(token: VToken): VNode =
+  case token.kind:
+  of vtkKeyword: toVSymbol token.keyword
+  of vtkNumber: toVNumber token.digits
+  of vtkString: toVString token.content
+  of vtkComment:
+    VNode(kind: vnkComment, inline: token.inline, comment: token.comment)
+  else:
+    err "this kind of converting is invalid"
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -173,7 +200,7 @@ func needsSpace(k: ScopeKinds): bool =
 const indentSize = 4
 
 func needsSemiColon(vn: VNode): bool =
-  vn.kind notin {vnkScope, vnkCase, vnkOf, vnkElif}
+  vn.kind notin {vnkScope, vnkCase, vnkCaseOf, vnkElif}
 
 template toValidNodeStyleStr(vn, depth): untyped =
   let t =
@@ -182,8 +209,13 @@ template toValidNodeStyleStr(vn, depth): untyped =
 
   t.indent(depth * indentSize)
 
+func toString(s: string, depth: int): string =
+  indent s, depth * indentSize
+
+func toString(vns: seq[VNode], depth: int): string
+
 func toString(vn: VNode, depth: int = 0): string =
-  let t =
+  let t = 
     case vn.kind:
 
     of vnkNumber: vn.digits
@@ -245,9 +277,17 @@ func toString(vn: VNode, depth: int = 0): string =
       toString(vn.module) & ' ' & toString(vn.instanceIdent) &
       '(' & vn.body.mapIt(it.toString).join(", ") & ");"
 
-    # of vnkElif:
-    # of vnkCase:
-    # of vnkOf:
+    of vnkElif, vnkStmtList:
+      err "not implemented"
+
+    of vnkCase:
+      toString("case", depth) & ' ' & toString(vn.select) & '\n' &
+      vn.body.toString(depth+1) &
+      '\n' & toString("endcase", depth)
+
+    of vnkCaseOf:
+      # TODO add stmtlist
+      toString(vn.comparator) & ": \n" & toString(vn.body, depth + 1)
 
     of vnkScope:
       let
@@ -283,18 +323,15 @@ func toString(vn: VNode, depth: int = 0): string =
 
     of vnkEmpty: ""
 
-    else: err "to string conversation is not imlplmented: " & $vn.kind
+  indent t, depth * indentSize
 
-  repeat(" ", depth * indentSize) & t
+func toString(vns: seq[VNode], depth: int): string =
+  vns.mapIt(toString(it, depth)).join("\n")
+
 
 func `$`*(vn: VNode): string =
   toString vn
 
-
-type
-  VerilogAST = tuple
-    header: string
-    nodes: seq[VNode]
 
 func getAST(vn: VNode): VerilogAST =
   case vn.kind:
@@ -330,7 +367,7 @@ func getAST(vn: VNode): VerilogAST =
     ("BracketExpr", @[vn.lookup, vn.index])
 
   of vnkCall:
-    ("Call", vn.body)
+    ("Call", @[vn.caller] & vn.body)
 
   of vnkGroup:
     (fmt"Group {vn.groupkind}", vn.body)
@@ -345,11 +382,11 @@ func getAST(vn: VNode): VerilogAST =
 
     (fmt"Scope {vn.scope} {inp}", vn.body)
 
-  # of vnkCase:
-  #   discard
+  of vnkCase:
+    ("Case", @[vn.select] & vn.body)
 
-  # of vnkOf:
-  #   discard
+  of vnkCaseOf:
+    ("CaseOf", @[vn.comparator] & vn.body)
 
   # of vnkElif:
   #   discard
@@ -363,8 +400,8 @@ func getAST(vn: VNode): VerilogAST =
   of vnkTriplefix:
     (fmt"Triplefix {vn.operator}", vn.body)
 
-  # of vnkComment:
-  #   err "comment?"
+  of vnkComment:
+    (fmt"Comment inline?: {vn.inline}", @[toVString vn.comment])
 
   else:
     err "tree not implemented"
@@ -381,24 +418,6 @@ func treeRepr*(vn: VNode): string =
   treeRepr vn.getAST, 0, acc
   acc.join "\n"
 
-func toVSymbol(name: string): VNode =
-  VNode(kind: vnkSymbol, symbol: name)
-
-func toVNumber(digits: string): VNode =
-  VNode(kind: vnkNumber, digits: digits)
-
-func toVString(s: string): VNode =
-  VNode(kind: vnkString, str: s)
-
-func toVNode(token: VToken): VNode =
-  case token.kind:
-  of vtkKeyword: toVSymbol token.keyword
-  of vtkNumber: toVNumber token.digits
-  of vtkString: toVString token.content
-  of vtkComment:
-    VNode(kind: vnkComment, inline: token.inline, comment: token.comment)
-  else:
-    err "this kind of converting is invalid"
 
 
 func toDeclareKind(s: string): VerilogDeclareKinds =
@@ -719,7 +738,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO stmt => ifelse / case
+      # TODO stmt => ifelse
       # TODO always args
 
       # ------------------------------------
@@ -826,12 +845,53 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       # ------------------------------------
 
+      of psCaseStart:
+        nodeStack.add VNode(kind: vnkCase)
+        switch psCaseAddSelect
+        follow psExprStart
+        inc i
+
+      of psCaseAddSelect:
+        let p = nodeStack.pop
+        nodeStack.last.select = p
+        switch psCaseMatchExpr
+
+      of psCaseMatchExpr:
+        matchVtoken ct:
+        of kw"endcase":
+          back
+          inc i
+        else:
+          nodeStack.add VNode(kind: vnkCaseOf)
+          switch psCaseMatchExprWrapper
+          follow psExprStart
+
+      of psCaseMatchExprWrapper:
+        let p = nodeStack.pop
+        nodeStack.last.comparator = p
+        switch psCaseMatchSep
+
+      of psCaseMatchSep:
+        matchVtoken ct:
+        of w skColon:
+          switch psCaseMatchBodyWrapper
+          follow psBlockBodyStart
+          inc i
+
+        else:
+          err "expected : got: " & $ct
+
+      of psCaseMatchBodyWrapper:
+        let p = nodestack.pop
+        nodestack.last.body.add p
+        switch psCaseMatchExpr
+
+      # ------------------------------------
+
       of psExprStart:
         matchVtoken ct:
-        of kw, n, s:
-          nodeStack.add toVNode ct
-          switch psExprBody
-          inc i
+        of kw"case":
+          switch psCaseStart
 
         of g vgcOpenPar:
           switch psParStart
@@ -848,8 +908,14 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             else: psPrefixStart
 
         else:
-          nodeStack.add VNode(kind: vnkEmpty)
-          back
+          if ct.kind in {vtkNumber, vtkString, vtkKeyword}:
+            nodeStack.add toVNode ct
+            switch psExprBody
+            inc i
+
+          else:
+            nodeStack.add VNode(kind: vnkEmpty)
+            back
 
       of psExprBody:
         matchVtoken ct:

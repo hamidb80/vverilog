@@ -12,19 +12,29 @@ module stimulus();
 // `define shiftright2 3'b001
 // assign memtemp_v1 = 1 ? 2 : 3;
 // assign memtemp_v1 = ~Write_Mem_q1 ? memory_v1[decodenum_s1] : 24'bz;
-assign b = $display("hey", 1);
+// assign b = $display("hey", 1);
 
 	// always @(clock or posedge reset)
 	// always @(clock)
 	initial
 	begin
-		// $display(1, $display(2));
+		$display(1, $display(2));
 		// $display(3);
-
+		// $dumpsvar;
 		// a = 2;
 
 		#322 a = 2;
-		#400;
+		// #400;
+
+	case (Mem_Pointer_s1)
+		ident: discard;
+		
+		1'bz:	begin
+			discard;
+		end
+
+		// default: $display("it's working!", 2);
+	endcase
 
 		// if(before)
 		// 	a = 1;
@@ -45,6 +55,8 @@ assign b = $display("hey", 1);
 		// it(test) b = 4;
 		
 	end
+
+	// TODO nested ifelse > case
 
 	// initial a = 2;
 
