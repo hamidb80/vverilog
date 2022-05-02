@@ -4,7 +4,7 @@ a Verilog parser written in Nim.
 ## Supported Syntax
 - `module`
   - with/without parameters
-- module scopes [always, initial, assign]
+- module scopes [`always`, `initial`, `assign`]
 - `forever`
 - instanciation
 - declare parameters
@@ -32,7 +32,7 @@ a Verilog parser written in Nim.
 - triplefix (`a ? b : c`)
 - block
   - single stmt
-  - `begin`/end`
+  - `begin`/`end`
 
 ## Features
 - convert code to tree repr
