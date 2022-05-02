@@ -137,7 +137,8 @@ type
     psModuleStart, psModuldeIdent, psModuldeParams
     psModuleApplyParams, psModuleBody, psModuleAddBody
 
-    psTimeStamp
+    psWord
+    psTimeStampStart, psTimeStampBody, psTimeStampBodyAdd
 
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
     psDeclareIdentCheck, psDeclareAddIdent
@@ -192,10 +193,11 @@ func toVNode(token: VToken): VNode =
   of vtkKeyword: toVSymbol token.keyword
   of vtkNumber: toVNumber token.digits
   of vtkString: toVString token.content
+  of vtkOperator: toVSymbol token.operator
   of vtkComment:
     VNode(kind: vnkComment, inline: token.inline, comment: token.comment)
   else:
-    err "this kind of converting is invalid"
+    err "this kind of converting is invalid: " & $token
 
 
 func `$`*(k: VerilogDeclareKinds): string =
@@ -505,21 +507,20 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
     let ct = tokens[i] # current token
     
     if ct.kind == vtkComment:
-      # debugEcho ">>> SKIPPED"
       inc i
       continue
     
     elif ct.matchSep '\n':
-      if not (nodestack.anyIt it.kind in {vnkTimeStamp}):
+      if not (nodestack.anyIt it.kind in {vnkTimeStamp, vnkDefine}):
         inc i
         continue
 
     else:
-      # debugecho " - - - - - - - - - - - - - - - - - "
-      # debugecho ct
-      # debugecho "/ ", stateStack.join" / "
-      # debugecho "> ", nodeStack.mapIt(it.kind).join" > "
-      discard
+      when defined(vParserDebug):
+        debugecho " - - - - - - - - - - - - - - - - - "
+        debugecho ct
+        debugecho "/ ", stateStack.join" / "
+        debugecho "> ", nodeStack.mapIt(it.kind).join" > "
 
     ## every part must set the `i`(index) after his last match
     case stateStack.last:
@@ -529,14 +530,18 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of kw "module":
           follow psModuleStart
         
-        of kw"`define", kw"`timescale":
+        of kw"`define":
           follow psDefineStart
+
+        of kw"`timescale":
+          follow psTimeStampStart
 
         else: err "not implemented: " & $ct
 
       of psAddToTop:
         result.add nodestack.pop
         back
+        inc i
 
       # ------------------------------------
 
@@ -595,7 +600,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           nodeStack.last.children.add p
           back
           back
-          inc i
 
         else: # instantiation
           if ct.kind == vtkKeyword:
@@ -673,8 +677,28 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           err "expected ; got:" & $ct
 
 
-      of psTimeStamp:
-        err "not impl\n\n"
+      of psWord:
+        nodeStack.add toVNode ct
+        inc i
+        back
+
+      of psTimeStampStart:
+        nodestack.add VNode(kind: vnkTimeStamp)
+        inc i
+        switch psTimeStampBody
+
+      of psTimeStampBody:
+        matchVtoken ct:
+        of w skNewline:
+          back
+        else:
+          follow psTimeStampBodyAdd
+          follow psWord
+
+      of psTimeStampBodyAdd:
+        let p = nodestack.pop
+        nodestack.last.children.add p
+        back        
 
 
       of psDefineStart:
@@ -1200,9 +1224,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodeStack.last.children.add p
         back
 
-
-  # debugecho "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~"
-  # debugecho nodestack.mapIt it.kind
+  when defined(vParserDebug):
+    debugecho "~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~"
+    debugecho nodestack.mapIt it.kind
 
 func parseVerilog*(content: string): seq[VNode] =
   let tokens = toseq extractVerilogTokens content
