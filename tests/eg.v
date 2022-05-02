@@ -86,5 +86,7 @@ always @(posedge Phi1 or posedge ali) begin end
 		
 endmodule
 
+`timescale 1 ns / 1 ps
+
 module A1; endmodule
 module B2; endmodule

@@ -129,8 +129,9 @@ type
 
 
   ParserState = enum
-    psTopLevel
-    psModuldeIdent, psModuldeParams, psModuleApplyParams, psModuleBody, psModuleAddBody
+    psTopLevel, psAddToTop
+    psModuleStart, psModuldeIdent, psModuldeParams
+    psModuleApplyParams, psModuleBody, psModuleAddBody
 
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
     psDeclareIdentCheck, psDeclareAddIdent
@@ -505,18 +506,24 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
     ## every part must set the `i`(index) after his last match
     case stateStack.last:
       of psTopLevel:
+        follow psAddToTop
         matchVtoken ct:
         of kw "module":
-          nodeStack.add VNode(kind: vnkModule)
-          stateStack.add psModuldeIdent
-          inc i
-
+          follow psModuleStart
+        
         of kw"`define`", kw"`timescale":
-          # TODO
           err "not defened"
 
         else: err "not implemented: " & $ct
 
+      of psAddToTop:
+        result.add nodestack.pop
+        back
+
+      of psModuleStart:
+        nodeStack.add VNode(kind: vnkModule)
+        switch psModuldeIdent
+        inc i
 
       of psModuldeIdent:
         matchVtoken ct:
@@ -566,7 +573,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of kw"endmodule":
           let p = nodeStack.pop
           nodeStack.last.children.add p
-          result.add nodeStack.pop
           back
           back
           inc i
