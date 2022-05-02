@@ -160,7 +160,7 @@ type
     psCaseStart, psCaseAddSelect, psCaseMatchExpr, psCaseMatchExprWrapper
     psCaseMatchSep, psCaseMatchBodyWrapper
 
-    psScopeStart, psScopeApplyInput, psScopeInput
+    psScopeStart, psScopeApplyInput, psScopeAlwaysWrapperInput
     psScopeBodyWrapper, psScopeBodyAdd
 
     psForStart, psForParOpen, psForInit, psForCond, psForParClose
@@ -496,10 +496,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       continue
 
     else:
-      debugecho " - - - - - - - - - - - - - - - - - "
-      debugecho ct
-      debugecho "/ ", stateStack.join" / "
-      debugecho "> ", nodeStack.mapIt(it.kind).join" > "
+      # debugecho " - - - - - - - - - - - - - - - - - "
+      # debugecho ct
+      # debugecho "/ ", stateStack.join" / "
+      # debugecho "> ", nodeStack.mapIt(it.kind).join" > "
       discard
 
     ## every part must set the `i`(index) after his last match
@@ -512,6 +512,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
           inc i
 
         of kw"`define`", kw"`timescale":
+          # TODO
           err "not defened"
 
         else: err "not implemented: " & $ct
@@ -776,8 +777,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         inc i
 
-      # TODO always without arg
-
       # ------------------------------------
 
       of psInstanciateStart:
@@ -821,16 +820,28 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         nodeStack.add temp
 
-        switch:
-          case temp.scope:
-          of skAlways, skDelay: psScopeInput
-          else: psScopeBodyWrapper
+      
+        case temp.scope:
+        of skDelay: 
+          switch psScopeApplyInput
+          follow psExprStart
+        
+        of skAlways: 
+         switch psScopeAlwaysWrapperInput 
+        
+        else: 
+          switch psScopeBodyWrapper
 
         inc i
 
-      of psScopeInput:
-        switch psScopeApplyInput
-        follow psExprStart
+      of psScopeAlwaysWrapperInput:
+        matchVToken ct:
+        of o "@":
+          switch psScopeApplyInput
+          follow psExprStart
+          inc i
+        else:
+          switch psScopeBodyWrapper
 
       of psScopeApplyInput:
         let p = nodeStack.pop

@@ -70,18 +70,20 @@ initial
 initial begin
 	case(a)
 	endcase
+
+	
+	for (i = 0; i < 8; i = ProgCntr+1)
+		var[i] = 8'b0;
 end
 
-initial	case(a) endcase
+initial	case(b) endcase
 initial	#200;
 initial	if(hey) a = 2;
 
-// always begin end
+always begin end
 always @(Phi1) begin end
 always @(posedge Phi1 or posedge ali) begin end
-
-// for (ProgCntr = 0; ProgCntr < `NUM_KERNEL; ProgCntr = ProgCntr+1)
-// 		Kernel[ProgCntr] = 8'b0;
+		
 endmodule
 
 module A1; endmodule
