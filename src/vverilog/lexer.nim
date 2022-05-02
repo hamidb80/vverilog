@@ -16,6 +16,7 @@ type
     skSemiColon
     skColon
     skComma
+    skNewLine
 
   VerilogGroupChar* = enum
     vgcOpenPar, vgcClosePar
@@ -58,7 +59,7 @@ type
 const
   VerilogIdentStartChars = IdentStartChars + {'$'}
   EoC = '\0' # end of content
-  Stoppers = Whitespace + {EoC}
+  Stoppers = Whitespace -  {'\n'} + {EoC}
   Operators = {'+', '-', '*', '/', '#', '@', '~', '?', '^', '|', '&', '%',
       '<', '!', '=', '>', '.'}
 
@@ -68,6 +69,7 @@ func toSep*(c: char): SeparatorKinds =
   of ':': skColon
   of ';': skSemiColon
   of ',': skComma
+  of '\n': skNewLine
   else:
     err "invalid cahr"
 
@@ -76,6 +78,7 @@ func fromSep*(s: SeparatorKinds): char =
   of skColon: ':'
   of skSemiColon: ';'
   of skComma: ','
+  of skNewLine: '\n'
 
 func matchOperator*(vt:VToken, op: string): bool=
   vt.kind == vtkOperator and vt.operator == op
@@ -128,7 +131,7 @@ iterator extractVerilogTokens*(content: string): VerilogToken =
         inc i
         start = i
 
-      of ',', ':', ';':
+      of ',', ':', ';', '\n':
         push VerilogToken(kind: vtkSeparator, sepKind: toSep cc)
         inc i
 
@@ -287,8 +290,8 @@ macro matchVtoken*(comparator: VToken, branches: varargs[untyped]): untyped =
   # echo treeRepr result
   # echo repr result
 
-# func matchSep*(t:VToken, sep: char): bool =
-#   t.kind == vtkSeparator and t.sepKind == toSep sep
+func matchSep*(t:VToken, sep: char): bool =
+  t.kind == vtkSeparator and t.sepKind == toSep sep
 
 # func matchOp*(t:VToken, op: string): bool =
 #   t.kind == vtkOperator and t.operator == op

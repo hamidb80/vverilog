@@ -33,7 +33,7 @@ type
     vnkNumber, vnkString, vnkRange
     vnkSymbol, vnkGroup
 
-    vnkDeclare, vnkDefine, vnkAssign
+    vnkDeclare, vnkDefine, vnkAssign, vnkTimeStamp
     vnkCall, vnkInstanciate
 
     vnkModule, vnkScope
@@ -75,6 +75,9 @@ type
 
     of vnkDefine:
       ident*, value*: VerilogNode
+
+    of vnkTimeStamp:
+      discard
 
     of vnkAssign:
       discard
@@ -130,8 +133,11 @@ type
 
   ParserState = enum
     psTopLevel, psAddToTop
+    
     psModuleStart, psModuldeIdent, psModuldeParams
     psModuleApplyParams, psModuleBody, psModuleAddBody
+
+    psTimeStamp
 
     psDeclareStart, psDeclareBus, psDeclareApplyBus, psDeclareIdentDo
     psDeclareIdentCheck, psDeclareAddIdent
@@ -265,6 +271,9 @@ func toString(vn: VNode, depth: int = 0): string =
     of vnkDefine:
       "`define " & toString(vn.ident) & ' ' & toString(vn.value)
 
+    of vnkTimeStamp:
+      "`timestamp " & vn.children.mapIt(toString it).join(" ")
+
     of vnkAssign:
       "assign " & toString(vn.children[0])
 
@@ -368,6 +377,9 @@ func getAST(vn: VNode): VerilogAST =
 
   of vnkDefine:
     ("Define", @[vn.ident, vn.value])
+
+  of vnkTimeStamp:
+    ("TimeStamp", vn.children)
 
   of vnkAssign:
     ("Assign", vn.children)
@@ -491,10 +503,16 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
   while i < tokens.len:
     let ct = tokens[i] # current token
+    
     if ct.kind == vtkComment:
       # debugEcho ">>> SKIPPED"
       inc i
       continue
+    
+    elif ct.matchSep '\n':
+      if not (nodestack.anyIt it.kind in {vnkTimeStamp}):
+        inc i
+        continue
 
     else:
       # debugecho " - - - - - - - - - - - - - - - - - "
@@ -519,6 +537,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psAddToTop:
         result.add nodestack.pop
         back
+
+      # ------------------------------------
 
       of psModuleStart:
         nodeStack.add VNode(kind: vnkModule)
@@ -651,6 +671,10 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         else:
           err "expected ; got:" & $ct
+
+
+      of psTimeStamp:
+        err "not impl\n\n"
 
 
       of psDefineStart:
