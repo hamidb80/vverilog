@@ -529,8 +529,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of kw "module":
           follow psModuleStart
         
-        of kw"`define`", kw"`timescale":
-          err "not defened"
+        of kw"`define", kw"`timescale":
+          follow psDefineStart
 
         else: err "not implemented: " & $ct
 

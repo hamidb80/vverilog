@@ -1,3 +1,5 @@
+`define hey 2
+
 // module stimulus(clk, number[7:0]);
 // module stimulus(clk, number);
 module stimulus();
