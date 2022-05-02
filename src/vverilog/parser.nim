@@ -133,7 +133,7 @@ type
 
   ParserState = enum
     psTopLevel, psAddToTop
-    
+
     psModuleStart, psModuldeIdent, psModuldeParams
     psModuleApplyParams, psModuleBody, psModuleAddBody
 
@@ -286,7 +286,11 @@ func toString(vn: VNode, depth: int = 0): string =
       "\nendmodule"
 
     of vnkPrefix:
-      vn.operator & toString(vn.children[0])
+      let space = block:
+        if vn.operator[0] in Letters: " "
+        else: ""
+
+      vn.operator & space & toString(vn.children[0])
 
     of vnkInfix:
       toString(vn.children[0]) & ' ' &
@@ -322,7 +326,8 @@ func toString(vn: VNode, depth: int = 0): string =
         toString(vn.children[0], depth)
 
     of vnkForLoop:
-      "for(" & toString(vn.children[0]) & "; " & toString(vn.children[1]) & "; " &
+      "for(" & toString(vn.children[0]) & "; " & toString(vn.children[1]) &
+          "; " &
       toString(vn.children[2]) & ") " & toString(vn.children[3], depth)
 
     of vnkStmtList:
@@ -345,7 +350,14 @@ func toString(vn: VNode, depth: int = 0): string =
       let
         inp =
           if issome vn.input:
-            toString(vn.input.get)
+            let t = toString(vn.input.get)
+
+            let at =
+              if vn.scope == skAlways: " @"
+              else: ""
+
+            at & t
+
           else:
             ""
 
@@ -505,11 +517,11 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
   while i < tokens.len:
     let ct = tokens[i] # current token
-    
+
     if ct.kind == vtkComment:
       inc i
       continue
-    
+
     elif ct.matchSep '\n':
       if not (nodestack.anyIt it.kind in {vnkTimeStamp, vnkDefine}):
         inc i
@@ -529,7 +541,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of kw "module":
           follow psModuleStart
-        
+
         of kw"`define":
           follow psDefineStart
 
@@ -698,7 +710,7 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
       of psTimeStampBodyAdd:
         let p = nodestack.pop
         nodestack.last.children.add p
-        back        
+        back
 
 
       of psDefineStart:
@@ -874,16 +886,16 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
         nodeStack.add temp
 
-      
+
         case temp.scope:
-        of skDelay: 
+        of skDelay:
           switch psScopeApplyInput
           follow psExprStart
-        
-        of skAlways: 
-         switch psScopeAlwaysWrapperInput 
-        
-        else: 
+
+        of skAlways:
+          switch psScopeAlwaysWrapperInput
+
+        else:
           switch psScopeBodyWrapper
 
         inc i
