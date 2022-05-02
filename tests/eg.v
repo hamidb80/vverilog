@@ -1,4 +1,3 @@
-
 // module stimulus(clk, number[7:0]);
 // module stimulus(clk, number);
 module stimulus();
@@ -58,6 +57,8 @@ initial
 			else
 				b = 5;
 		end
+
+		for (i = 0; i < `NUM_KERNEL; i = i+1) var[i] = 1;
 	end
 
 	initial a = 2;
