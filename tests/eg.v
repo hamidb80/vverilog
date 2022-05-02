@@ -70,9 +70,7 @@ initial
 	mdl m2(1, 2);
 
 initial begin
-	case(a)
-	endcase
-
+	//FIXME forever #300 clk = ~clk;
 	
 	for (i = 0; i < 8; i = ProgCntr+1)
 		var[i] = 8'b0;

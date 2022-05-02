@@ -1133,6 +1133,9 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of kw"for":
           switch psForStart
 
+        of kw"forever":
+          switch psScopeStart
+
         of g vgcOpenPar:
           switch psExprBody
           follow psParStart
