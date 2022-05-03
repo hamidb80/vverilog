@@ -178,17 +178,21 @@ type
 
     # TODO remove unused
 
+## TODO add doc
 
-func toVSymbol(name: string): VNode =
+func toVSymbol*(name: string): VNode =
   VNode(kind: vnkSymbol, symbol: name)
 
-func toVNumber(digits: string): VNode =
+func toVNumber*(digits: string): VNode =
   VNode(kind: vnkNumber, digits: digits)
 
-func toVString(s: string): VNode =
+func toVNumber*(n: SomeNumber): VNode =
+  VNode(kind: vnkNumber, digits: $n)
+
+func toVString*(s: string): VNode =
   VNode(kind: vnkString, str: s)
 
-func toVNode(token: VToken): VNode =
+func toVNode*(token: VToken): VNode =
   case token.kind:
   of vtkKeyword: toVSymbol token.keyword
   of vtkNumber: toVNumber token.digits
