@@ -25,7 +25,6 @@ type
     skAlways
     skForever
     skInitial
-    skDelay
 
   VerilogNodeKinds* = enum
     vnkEmpty
@@ -36,7 +35,7 @@ type
     vnkDeclare, vnkDefine, vnkAssign, vnkTimeStamp
     vnkCall, vnkInstanciate
 
-    vnkModule, vnkScope
+    vnkModule, vnkScope, vnkDelay
     vnkCase, vnkOf
     vnkElif, vnkElifBranch
     vnkForLoop
@@ -44,8 +43,8 @@ type
     vnkPrefix, vnkInfix, vnkTriplefix
     vnkBracketExpr
 
-    vnkComment
     vnkStmtList
+    vnkComment
 
   VerilogNode* {.acyclic.} = ref object
     children*: seq[VerilogNode]
@@ -90,6 +89,9 @@ type
       scope*: ScopeKinds
       input*: Option[VerilogNode]
 
+    of vnkDelay:
+      timeout*, code*: VerilogNode
+
     of vnkInstanciate:
       module*, instanceIdent*: VerilogNode
 
@@ -125,6 +127,7 @@ type
       discard
 
   VNode* = VerilogNode
+
 
   VerilogAST* = tuple
     header: string
@@ -170,6 +173,8 @@ type
 
     psScopeStart, psScopeApplyInput, psScopeAlwaysWrapperInput
     psScopeBodyWrapper, psScopeBodyAdd
+
+    psDelayStart, psDelayTime, psDelayCode
 
     psForStart, psForParOpen, psForInit, psForCond, psForParClose
     psForStep, psForAddBody # TODO
@@ -218,7 +223,6 @@ func `$`*(k: ScopeKinds): string =
   of skAlways: "always"
   of skForever: "forever"
   of skInitial: "initial"
-  of skDelay: "#"
 
 
 const indentSize = 4
@@ -351,19 +355,11 @@ func toString(vn: VNode, depth: int = 0): string =
       toString(vn.comparator) & ": " & toString(vn.children, depth)
 
     of vnkScope:
-      let
-        inp =
-          if issome vn.input:
-            let t = toString(vn.input.get)
-
-            let at =
-              if vn.scope == skAlways: " @"
-              else: ""
-
-            at & t
-
-          else:
-            ""
+      let inp =
+        if issome vn.input:
+          " @" & toString(vn.input.get)
+        else:
+          ""
 
       $vn.scope & inp & ' ' & toString(vn.children[0], depth)
 
@@ -372,6 +368,13 @@ func toString(vn: VNode, depth: int = 0): string =
         "//" & vn.comment
       else:
         "/*" & vn.comment & "*/"
+
+    of vnkDelay:
+      let c =
+        if vn.code.kind == vnkEmpty: ""
+        else: ' ' & toString(vn.code)
+
+      "#" & toString(vn.timeout) & c;
 
     of vnkEmpty: ""
 
@@ -434,6 +437,9 @@ func getAST(vn: VNode): VerilogAST =
         ""
 
     (fmt"Scope {vn.scope} {inp}", vn.children)
+
+  of vnkDelay:
+    ("Delay", @[vn.timeout, vn.code])
 
   of vnkCase:
     ("Case", @[vn.select] & vn.children)
@@ -882,9 +888,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
             let sk = toScopeKind ct.keyword
             VNode(kind: vnkScope, scope: sk)
 
-          of o "#":
-            VNode(kind: vnkScope, scope: skDelay, inline: true)
-
           else:
             err "what?"
 
@@ -892,10 +895,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
 
         case temp.scope:
-        of skDelay:
-          switch psScopeApplyInput
-          follow psExprStart
-
         of skAlways:
           switch psScopeAlwaysWrapperInput
 
@@ -974,6 +973,26 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
 
       # ------------------------------------
 
+      of psDelayStart:
+        nodeStack.add VNode(kind: vnkDelay)
+        inc i
+        switch psDelayTime
+        follow psExprStart
+
+      of psDelayTime:
+        let p = nodeStack.pop
+        nodeStack.last.timeout = p
+
+        switch psDelayCode
+        follow psExprStart
+
+      of psDelayCode:
+        let p = nodeStack.pop
+        nodeStack.last.code = p
+        back
+
+      # ------------------------------------
+
       of psCaseStart:
         nodeStack.add VNode(kind: vnkCase)
         switch psCaseAddSelect
@@ -1048,6 +1067,8 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         nodeStack.last.children.add p
         switch psElIfBody
         follow psBlockStart
+
+      # FIXME don't continue when it's the last ELSE
 
       of psElIfBody:
         let stmt = nodestack.pop
@@ -1151,10 +1172,15 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         of g vgcOpenBracket:
           switch psBracketStart
 
-        of o, kw"posedge":
+        of kw"posedge", kw"negedge":
+          switch psPrefixStart
+
+        of o:
           switch:
-            if matchOperator(ct, "#"): psScopeStart
-            else: psPrefixStart
+            if ct.operator == "#":
+              psDelayStart
+            else:
+              psPrefixStart
 
         else:
           if ct.kind in {vtkNumber, vtkString, vtkKeyword}:

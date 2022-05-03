@@ -76,6 +76,17 @@ initial begin
 		var[i] = 8'b0;
 end
 
+initial forever #1;
+initial forever #2 a;
+initial begin 
+	forever #3 b;
+end
+initial begin 
+	forever begin
+		#4 a;
+	end 
+end
+
 initial	case(b) endcase
 initial	#200;
 initial	if(hey) a = 2;
