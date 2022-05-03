@@ -166,7 +166,7 @@ type
     psInstanciateStart, psInstanciateInstanceIdent
     psInstanciateArgs, psInstanciateEnd
 
-    psIfStart, psElIfBranch, psElifCond, psElIfBody, psElseBody
+    psIfStart, psElIfBranch, psElifCond, psElIfBody, psElseWrapper, psElseBody
 
     psCaseStart, psCaseAddSelect, psCaseMatchExpr, psCaseMatchExprWrapper
     psCaseMatchSep, psCaseMatchBodyWrapper
@@ -1068,8 +1068,6 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         switch psElIfBody
         follow psBlockStart
 
-      # FIXME don't continue when it's the last ELSE
-
       of psElIfBody:
         let stmt = nodestack.pop
         nodeStack.last.children.add stmt
@@ -1080,18 +1078,27 @@ func parseVerilogImpl(tokens: seq[VToken]): seq[VNode] =
         matchVtoken ct:
         of kw"else":
           inc i
-          switch psElseBody
+          switch psElseWrapper
         else:
           back
 
-      of psElseBody:
+      of psElseWrapper:
         matchVtoken ct:
         of kw"if":
           switch psElIfBranch
         else:
           nodeStack.add VNode(kind: vnkElifBranch)
-          switch psElIfBody
+          switch psElseBody
           follow psBlockStart
+      
+      of psElseBody:
+        let stmt = nodestack.pop
+        nodeStack.last.children.add stmt
+
+        let br = nodestack.pop
+        nodeStack.last.children.add br
+
+        back
 
       # ------------------------------------
 
