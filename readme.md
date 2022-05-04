@@ -38,10 +38,5 @@ a Verilog parser written in Nim.
 - convert code to tree repr
 - convert code to repr
 
-## BUGS
-- operator priority is not considered
-- Error Handleing is Bad
-- parameters inside `if`/`case` should not considered as par group
-
 ## Origin
 a optional uni homework needed for a verilog parser.
